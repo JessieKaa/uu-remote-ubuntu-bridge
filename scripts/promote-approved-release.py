@@ -432,6 +432,19 @@ class Promotion:
             )
             if process.returncode != 0 or not process.stdout.strip():
                 raise PromotionError(f"current {label} is not running")
+        environment = dict(os.environ)
+        environment["WINEPREFIX"] = str(self.prefix)
+        full_check = command(
+            [str(self.repository / "scripts/verify.sh"), "--quick"],
+            cwd=self.repository,
+            env=environment,
+            timeout=180,
+        )
+        if full_check.returncode != 0:
+            raise PromotionError(
+                "current bridge failed complete pre-promotion verification: "
+                + command_error(full_check)
+            )
 
     def prefix_size(self) -> int:
         size = 0

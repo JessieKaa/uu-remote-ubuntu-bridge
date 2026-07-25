@@ -85,6 +85,9 @@ locked by the release manifest.
 - keep the login-preservation gate strict for registry, user-cache, identity,
   token, and remote-assist state while excluding only UU 4.34's non-account
   `setting.ini` guide state
+- run the complete installed bridge verifier before a promotion snapshot so
+  stale RDP port, libei, descriptor-limit, or source-runtime state fails
+  without interrupting the working UU release
 
 - wait for the actual FreeRDP relay window after Wine's short-lived Unix
   launcher exits, verify that the spawned GNOME daemon owns its configured

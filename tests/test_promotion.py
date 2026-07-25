@@ -10,6 +10,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 
 REPO_DIR = Path(__file__).resolve().parent.parent
@@ -268,6 +270,67 @@ class PromotionTests(unittest.TestCase):
                     before, login_state(prefix, promotion.username)
                 )
             )
+
+    def test_current_runtime_check_requires_complete_bridge_verification(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository = root / "repository"
+            (repository / "scripts").mkdir(parents=True)
+            prefix = root / "prefix"
+            uu_bin = (
+                prefix
+                / "drive_c/Program Files/Netease/GameViewer/bin"
+            )
+            uu_bin.mkdir(parents=True)
+            healthd_backup = uu_bin / "GameViewerHealthd.exe.uu-original"
+            healthd_backup.write_bytes(b"audited health monitor")
+            promotion = Promotion(
+                repository,
+                root / "manifest.json",
+                root / "installer.exe",
+                root / "work",
+                root / "state",
+                "0" * 40,
+                prefix=prefix,
+            )
+            manifest = SimpleNamespace(
+                server_filename="GameViewerServer.exe",
+                healthd_filename="GameViewerHealthd.exe",
+                healthd_original_sha256="health-hash",
+            )
+
+            def fake_command(arguments, **kwargs):
+                if arguments[-1:] == ["--quick"]:
+                    return subprocess.CompletedProcess(
+                        arguments,
+                        1,
+                        stdout="",
+                        stderr="stale production unit",
+                    )
+                return subprocess.CompletedProcess(
+                    arguments,
+                    0,
+                    stdout="123\n",
+                    stderr="",
+                )
+
+            with (
+                mock.patch.object(
+                    promotion_module, "load_manifest", return_value=manifest
+                ),
+                mock.patch.object(
+                    promotion_module,
+                    "sha256_file",
+                    return_value="health-hash",
+                ),
+                mock.patch.object(
+                    promotion_module, "command", side_effect=fake_command
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    PromotionError, "complete pre-promotion verification"
+                ):
+                    promotion.current_runtime_check()
 
     def test_successful_promotion_keeps_login_and_never_manages_xrdp(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

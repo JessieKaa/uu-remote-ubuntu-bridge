@@ -11,6 +11,7 @@ text_key_delay_ms="${UURB_TEXT_KEY_DELAY_MS:-8}"
 physical_key_delay_ms="${UURB_PHYSICAL_KEY_DELAY_MS:-0}"
 keyboard_route="${UURB_KEYBOARD_ROUTE:-rdp}"
 network_interface="${UURB_NETWORK_INTERFACE:-all}"
+wine_prefix="${UURB_WINEPREFIX:-$HOME/.local/share/wineprefixes/uu-remote}"
 manager_display="${DISPLAY:-}"
 manager_wayland="${WAYLAND_DISPLAY:-}"
 manager_session_type="${XDG_SESSION_TYPE:-}"
@@ -34,8 +35,9 @@ if [[ "$bridge_display" != auto &&
       "$keyboard_route" != auto ]] ||
    [[ "$network_interface" != all &&
       "$network_interface" != default &&
-      ! "$network_interface" =~ ^[a-zA-Z0-9_.:-]{1,15}$ ]]; then
-    printf 'Invalid UURB display, RDP port, resolution, descriptor, keyboard, or network setting.\n' >&2
+      ! "$network_interface" =~ ^[a-zA-Z0-9_.:-]{1,15}$ ]] ||
+   [[ "$wine_prefix" != /* ]]; then
+    printf 'Invalid UURB display, RDP port, resolution, descriptor, keyboard, network, or prefix setting.\n' >&2
     exit 2
 fi
 resolution_width="${resolution%x*}"
@@ -74,7 +76,7 @@ else
 fi
 
 export DISPLAY="$bridge_display"
-export WINEPREFIX="$HOME/.local/share/wineprefixes/uu-remote"
+export WINEPREFIX="$wine_prefix"
 export WINEDEBUG=-all
 export WINEDLLOVERRIDES='winedbg.exe=d;mscoree,mshtml='
 export OPENSSL_MODULES='C:\Program Files\FreeRDP\ossl-modules'

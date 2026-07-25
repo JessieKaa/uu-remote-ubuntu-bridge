@@ -86,6 +86,12 @@ class RuntimeScriptTests(unittest.TestCase):
             'network_interface="${UURB_NETWORK_INTERFACE:-all}"',
             launcher,
         )
+        self.assertIn(
+            'wine_prefix="${UURB_WINEPREFIX:-$HOME/.local/share/wineprefixes/uu-remote}"',
+            launcher,
+        )
+        self.assertIn('[[ "$wine_prefix" != /* ]]', launcher)
+        self.assertIn('export WINEPREFIX="$wine_prefix"', launcher)
         self.assertIn("/tmp/.X11-unix/X$display_number", launcher)
         self.assertIn("saved_setting UURB_RDP_PORT", verifier)
         self.assertIn("restore_bridge_after_failure", installer)

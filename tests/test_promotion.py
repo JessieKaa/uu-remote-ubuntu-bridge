@@ -245,6 +245,30 @@ class PromotionTests(unittest.TestCase):
             )
             self.assertNotIn("existing-login", json.dumps(before))
 
+    def test_non_account_guide_state_does_not_block_login_preservation(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            promotion, prefix = self.make_fixture(Path(temporary))
+            before = login_state(prefix, promotion.username)
+            shared = prefix / "drive_c/ProgramData/Netease/GameViewer"
+
+            (shared / "setting.ini").write_text(
+                "[global]\nremoteassist_guide=true\n"
+                "remoteassist_guide_step=2\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(
+                login_state_is_preserved(
+                    before, login_state(prefix, promotion.username)
+                )
+            )
+
+            (shared / "user_info.ini").write_bytes(b"changed shared account")
+            self.assertFalse(
+                login_state_is_preserved(
+                    before, login_state(prefix, promotion.username)
+                )
+            )
+
     def test_successful_promotion_keeps_login_and_never_manages_xrdp(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             promotion, prefix = self.make_fixture(Path(temporary))

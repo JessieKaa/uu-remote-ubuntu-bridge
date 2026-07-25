@@ -28,6 +28,7 @@ REQUIRED_ACCEPTANCE_FLAGS = (
 )
 MINIMUM_STABILITY_SECONDS = 270
 MAXIMUM_STABILITY_SECONDS = 1800
+NON_ACCOUNT_SHARED_STATE = frozenset({"setting.ini"})
 
 
 class PromotionError(RuntimeError):
@@ -118,7 +119,11 @@ def validate_acceptance(raw: dict[str, Any]) -> dict[str, Any]:
     return dict(acceptance)
 
 
-def directory_state(path: Path) -> dict[str, int | str | bool]:
+def directory_state(
+    path: Path,
+    *,
+    ignored_relative_paths: frozenset[str] = frozenset(),
+) -> dict[str, int | str | bool]:
     if not path.is_dir():
         return {"exists": False, "files": 0, "bytes": 0, "digest": ""}
     digest = hashlib.sha256()
@@ -129,6 +134,8 @@ def directory_state(path: Path) -> dict[str, int | str | bool]:
             if not item.is_file() or item.is_symlink():
                 continue
             relative = item.relative_to(path).as_posix()
+            if relative in ignored_relative_paths:
+                continue
             stat_result = item.stat()
             digest.update(relative.encode("utf-8", errors="surrogateescape"))
             digest.update(b"\0")
@@ -192,7 +199,8 @@ def login_state(prefix: Path, username: str) -> dict[str, Any]:
             / "AppData/Local/GameViewer"
         ),
         "shared_state": directory_state(
-            prefix / "drive_c/ProgramData/Netease/GameViewer"
+            prefix / "drive_c/ProgramData/Netease/GameViewer",
+            ignored_relative_paths=NON_ACCOUNT_SHARED_STATE,
         ),
     }
 

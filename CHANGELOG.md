@@ -19,6 +19,11 @@ locked by the release manifest.
 - opt-in guarded promotion for a newer exact-hash release carrying a complete
   maintainer acceptance record, with in-place account reuse and full-prefix
   rollback
+- approved, hash-bound UU `4.34.0.8979` support after semantic patch review,
+  disposable-prefix validation, controller reconnect/input testing, and a
+  297-second canary
+- an absolute `UURB_WINEPREFIX` canary override for testing a copied prefix
+  without replacing the production prefix
 
 ### Security
 
@@ -77,6 +82,9 @@ locked by the release manifest.
   after an interrupted or failed transaction without automatic retry
 - avoid duplicate GitHub validation runs by validating feature work on pull
   requests and direct pushes only on `main`
+- keep the login-preservation gate strict for registry, user-cache, identity,
+  token, and remote-assist state while excluding only UU 4.34's non-account
+  `setting.ini` guide state
 
 - wait for the actual FreeRDP relay window after Wine's short-lived Unix
   launcher exits, verify that the spawned GNOME daemon owns its configured

@@ -74,16 +74,19 @@ login successful
 connected ok
 ```
 
-## Desktop uses only part of the UU canvas
+## Desktop and UU canvas have different sizes
 
 Windows App can dynamically resize an XRDP desktop to its current window. If
 the live desktop becomes smaller while UU retains its saved relay resolution,
-UU shows the desktop at the left with an unused white region.
+UU shows the desktop at the left with an unused white region. The reverse
+mismatch is less obvious: if XRDP remains larger than the private relay,
+FreeRDP may clip the right or bottom edge rather than scale the whole desktop.
+The GNOME top bar can still appear normal.
 
 Compare the live XRDP display with the saved UU relay size:
 
 ```bash
-DISPLAY=:11 XAUTHORITY="$HOME/.Xauthority" xdpyinfo | rg dimensions
+DISPLAY=:11 XAUTHORITY="$HOME/.Xauthority" xdotool getdisplaygeometry
 sed -n 's/^UURB_RESOLUTION=//p' \
   "$HOME/.config/uu-remote-bridge/environment"
 ps -eo pid,args | rg '[X]vfb :|[s]dl-freerdp.exe.*size:'
@@ -92,21 +95,25 @@ ps -eo pid,args | rg '[X]vfb :|[s]dl-freerdp.exe.*size:'
 Replace `:11` with the active XRDP display. Do not immediately reduce UU to a
 small dynamically selected window size: that removes the white region but
 makes the remote desktop unnecessarily low resolution. Choose one useful
-target for both layers. On the validated workstation, the existing helper
-restores the XRDP desktop and localhost VNC mirror to `1620x1080`:
+target for both layers. If XRDP is already at the desired `1920x1080`, align
+only the private relay:
 
 ```bash
-XRDP_VNC_GEOMETRY=1620x1080 \
-  "$HOME/scripts/xrdp-vnc-bridge.sh" resize
-
 ./install.sh --skip-packages --skip-account-login \
-  --resolution 1620x1080
+  --resolution 1920x1080
 ```
 
-The helper performs a short local FreeRDP reconnection to resize the existing
-Xorg session in place; it may disconnect an attached viewer but does not log
-out GNOME. The UU installer then restarts only the supervised bridge. Both
-values remain persistent.
+The installer restarts only the supervised UU bridge. It leaves
+`xrdp.service`, the XRDP display, and the attached RDP client alone. On the
+validated workstation, a `1920x1080` XRDP source paired with a `1620x1080`
+relay clipped exactly 300 pixels from the right. Aligning the private Xvfb,
+SDL FreeRDP window, and XRDP source at `1920x1080` restored the complete
+canvas; source tests and installed bridge verification still passed.
+
+If XRDP itself must be resized, the existing helper can perform a short local
+FreeRDP reconnection to resize the Xorg session in place. That may disconnect
+an attached viewer but does not log out GNOME. Keep this as a separate step
+from aligning UU.
 
 FreeRDP 3 rejects the older helper argument `subtype:0` by printing its usage
 page without connecting. The current helper announces Japanese layout and

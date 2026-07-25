@@ -43,6 +43,9 @@ locked by the release manifest.
 
 - document automatic maintenance, Codex resume state, reboot behavior, track
   selection, another-computer handoff, and the remaining approval boundary
+- distinguish a smaller XRDP source that leaves white space from a larger XRDP
+  source that clips the relay, and document resolution alignment that restarts
+  UU without restarting XRDP
 - explain why the old nested input route could accept every sampled
   `SendInput` call while losing fast keyboard transitions, why slow typing and
   pointer motion could mask that fault, and why the direct X11 route fixes the

@@ -284,31 +284,35 @@ after the client closes. Ubuntu's unit dependencies can restart
 end the prior XRDP/VNC desktop. The complete evidence and safest ordering are
 in [XRDP Client Stall and UU Keyboard Recovery](xrdp-and-keyboard-recovery.md).
 
-## UU shows the desktop on the left and white space on the right
+## UU has white space or clips the right side of the desktop
 
 Compare the active XRDP display with the UU relay setting:
 
 ```bash
-DISPLAY=:11 XAUTHORITY="$HOME/.Xauthority" xdpyinfo | rg dimensions
+DISPLAY=:11 XAUTHORITY="$HOME/.Xauthority" xdotool getdisplaygeometry
 sed -n 's/^UURB_RESOLUTION=//p' \
   ~/.config/uu-remote-bridge/environment
 ```
 
 Windows App can dynamically resize the XRDP desktop when its window changes.
+When XRDP is smaller than UU's private relay, the unused region appears as
+white space. When XRDP is larger, FreeRDP can clip the right or bottom edge
+instead of scaling it. The GNOME top bar may still look plausible, so inspect
+the dimensions rather than judging only from the header.
+
 Do not shrink UU to a very small window-derived size unless that low resolution
-is intentional. Restore a useful XRDP size first, then match UU. On the
-validated workstation:
+is intentional. Restore a useful XRDP size first, then match UU. For example,
+if both should be `1920x1080`:
 
 ```bash
-XRDP_VNC_GEOMETRY=1620x1080 \
-  "$HOME/scripts/xrdp-vnc-bridge.sh" resize
-
 ./install.sh --skip-packages --skip-account-login \
-  --resolution 1620x1080
+  --resolution 1920x1080
 ```
 
-The resize helper may disconnect an attached RDP viewer, but it preserves the
-GNOME session. Only the second command restarts UU. See the
+This restarts only the supervised UU bridge; it does not restart or reconfigure
+XRDP. If XRDP itself must be resized, do that as a separate operator-controlled
+step because changing the XRDP geometry may disconnect its attached viewer.
+See the
 [recovery note](xrdp-and-keyboard-recovery.md#desktop-uses-only-part-of-the-uu-canvas)
 for the FreeRDP 3 compatibility correction and persistence behavior.
 

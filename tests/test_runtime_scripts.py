@@ -25,6 +25,20 @@ class RuntimeScriptTests(unittest.TestCase):
             cwd=REPOSITORY,
         )
 
+    def test_uu_agent_discovers_runtime_without_hardcoded_device_ids(self):
+        helper = (REPOSITORY / "scripts" / "uu-agent").read_text()
+        installer = (REPOSITORY / "install.sh").read_text()
+        digest = (REPOSITORY / "scripts" / "runtime-source-digest").read_text()
+
+        self.assertIn("GameViewerServer.exe", helper)
+        self.assertIn("ControlGroup", helper)
+        self.assertIn("uuyc-cli.exe", helper)
+        self.assertIn("WINEPREFIX", helper)
+        self.assertIn("Do not commit", helper)
+        self.assertNotRegex(helper, r"aeaw[a-z0-9]{8,}")
+        self.assertIn('scripts/uu-agent" "$HOME/.local/bin/uu-agent"', installer)
+        self.assertIn("scripts/uu-agent", digest)
+
     def test_xrdp_private_bus_relay_is_supervised(self):
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
         self.assertIn("DBUS_SESSION_BUS_ADDRESS=$desktop_bus", launcher)
@@ -205,6 +219,16 @@ class RuntimeScriptTests(unittest.TestCase):
         unit = (REPOSITORY / "systemd" / "uu-remote-bridge.service").read_text()
         self.assertIn("WantedBy=default.target", unit)
         self.assertNotIn("WantedBy=graphical-session.target", unit)
+
+    def test_bridge_resource_runaway_is_contained(self):
+        unit = (REPOSITORY / "systemd" / "uu-remote-bridge.service").read_text()
+
+        self.assertIn("MemoryHigh=3G", unit)
+        self.assertIn("MemoryMax=4G", unit)
+        self.assertIn("MemorySwapMax=2G", unit)
+        self.assertIn("TasksMax=1024", unit)
+        self.assertIn("OOMPolicy=stop", unit)
+        self.assertIn("Restart=on-failure", unit)
 
     def test_freerdp_cache_is_checksum_backed(self):
         builder = (REPOSITORY / "scripts" / "build-winpr.sh").read_text()

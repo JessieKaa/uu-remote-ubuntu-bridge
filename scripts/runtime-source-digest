@@ -18,6 +18,7 @@ runtime_files=(
     scripts/stop-wine-prefix
     scripts/uu_connection_status.py
     scripts/uu-keyring-unlock.py
+    scripts/uu-agent
     scripts/uu-remote
     scripts/uu-remote-bridge
     scripts/verify.sh

@@ -397,6 +397,7 @@ The RDP hop targets loopback and pins GNOME's certificate fingerprint.
 | `scripts/uu_update_manager.py` | Daily checks, health recovery, and resumable Codex repair state machine |
 | `scripts/configure-updater.sh` | Install, select a behavior track, and remove maintenance timers |
 | `scripts/uu-remote-bridge` | Supervised UU/Xvfb/FreeRDP orchestration |
+| `scripts/uu-agent` | Runtime-discovered UU controller CLI and private-display diagnostics |
 | `scripts/uu_connection_status.py` | Privacy-safe transport and key-watchdog diagnosis |
 | `scripts/configure-unattended.sh` | TPM-backed GDM autologin setup and rollback |
 | `scripts/uu-keyring-unlock.py` | Secret Service unlock before GNOME RDP |
@@ -416,6 +417,7 @@ ID, raw production log, screenshot, or private desktop content is committed.
 - [Input behavior tracks](docs/release-tracks.md)
 - [Automatic checks and resumable repair](docs/automatic-updates.md)
 - [Automated repair agent handoff](docs/automated-repair-agent-handoff.md)
+- [UU controller CLI and remote agent](docs/controller-agent.md)
 - [Mobile-keyboard parity handoff](docs/mobile-keyboard-parity-handoff.md)
 - [XRDP client stall and UU keyboard recovery](docs/xrdp-and-keyboard-recovery.md)
 - [Unattended startup after reboot](docs/unattended-startup.md)

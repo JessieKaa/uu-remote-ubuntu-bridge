@@ -24,6 +24,8 @@ locked by the release manifest.
   297-second canary
 - an absolute `UURB_WINEPREFIX` canary override for testing a copied prefix
   without replacing the production prefix
+- a runtime-discovered `uu-agent` wrapper for the vendor controller CLI,
+  private display inspection, and bounded Mac terminal-agent workflows
 
 ### Security
 
@@ -91,6 +93,9 @@ locked by the release manifest.
 - run the complete installed bridge verifier before a promotion snapshot so
   stale RDP port, libei, descriptor-limit, or source-runtime state fails
   without interrupting the working UU release
+- contain an upstream Wine memory or thread runaway with service-level memory,
+  swap, and task ceilings so systemd rebuilds only the relay instead of
+  allowing it to freeze the desktop
 
 - wait for the actual FreeRDP relay window after Wine's short-lived Unix
   launcher exits, verify that the spawned GNOME daemon owns its configured

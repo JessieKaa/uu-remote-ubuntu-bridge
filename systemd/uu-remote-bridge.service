@@ -13,6 +13,13 @@ RestartSec=30
 TimeoutStopSec=15
 KillMode=control-group
 LimitNOFILE=65536
+# The relay normally stays below 2 GiB. Contain an upstream Wine/thread leak
+# inside this restartable service instead of allowing it to stall the desktop.
+MemoryHigh=3G
+MemoryMax=4G
+MemorySwapMax=2G
+TasksMax=1024
+OOMPolicy=stop
 
 [Install]
 WantedBy=default.target

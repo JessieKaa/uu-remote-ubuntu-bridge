@@ -94,54 +94,53 @@ window and inspect a fresh private screenshot. Never automate account
 publication, a purchase, firmware flashing, credential entry, or a destructive
 confirmation dialog.
 
-## Headless Mac Failure Mode
+## Headless Mac: Separate GUI and Terminal Health
 
-UU can show a Mac as online while both GUI connection and `term` fail. The
-account/device heartbeat proves that the host service reached UU; it does not
-prove that macOS has an active framebuffer or that the terminal agent opened a
-session.
+The 7050 iMac's operator later confirmed several successful UU GUI connections
+with the monitor unplugged. UU therefore works headlessly on this host without
+a dummy plug or virtual display. This supersedes the earlier inference that a
+missing active display caused the connection problem.
 
-Observed on the headless 7050 iMac:
+The observations remain useful when kept separate:
 
 - the device remained online after its monitor was unplugged;
-- SSH and macOS Screen Sharing were not listening;
-- the UU terminal progressed through connection setup and then timed out
-  waiting for the remote open response;
-- earlier GUI attempts reached a wallpaper or connection optimization state
-  but did not become controllable.
+- UU GUI connections opened repeatedly and were usable without the monitor;
+- one UU `term` attempt progressed through setup and then timed out waiting for
+  the remote open response;
+- SSH and macOS Screen Sharing were not listening at the time of that terminal
+  test.
 
-Restore one independent access path before changing the host:
+The terminal-agent timeout does not imply that the UU GUI, framebuffer, or
+input path is broken. Diagnose and verify the device heartbeat, GUI video, GUI
+input, and terminal agent independently.
 
-1. Temporarily reconnect a monitor or use an HDMI/DisplayPort dummy plug.
-2. Enable macOS Screen Sharing or Remote Login for a named local user.
-3. Install a persistent virtual display if software-only headless operation is
-   required.
+Do not reconnect a monitor, install BetterDisplay, or add a dummy plug solely
+to repair UU when its headless GUI already works. Remote Login and Screen
+Sharing are optional independent recovery paths. A virtual display is also
+optional and is appropriate only when a real resolution, framebuffer, or
+capture problem has been reproduced.
 
-BetterDisplay supports virtual screens for headless Macs. On macOS 13.2 or
-later, install it from its official Homebrew cask:
+If a virtual screen is actually required, BetterDisplay supports one on macOS
+13.2 or later and can be installed from its official Homebrew cask:
 
 ```bash
 brew install --cask betterdisplay
 open -a BetterDisplay
 ```
 
-Create one named virtual screen, verify that macOS and UU both capture it, and
-enable BetterDisplay at login before unplugging the monitor again. Its current
-CLI supports `create -type=VirtualScreen`, `virtualScreenName`,
-`resolutionList`, `virtualScreenHiDPI`, and `connected`. Query the installed
-version's help before scripting those parameters.
-
-The hardware dummy plug is the lowest-maintenance recovery path. A software
-virtual screen is more flexible, but it depends on the GUI login session,
-BetterDisplay startup, and macOS permissions.
+Create only the named virtual screen needed for the reproduced display issue,
+then verify that macOS and UU both capture it. BetterDisplay's current CLI
+supports `create -type=VirtualScreen`, `virtualScreenName`, `resolutionList`,
+`virtualScreenHiDPI`, and `connected`. Query the installed version's help
+before scripting those parameters.
 
 ## Failure Interpretation
 
 | Observation | Meaning | Next action |
 | --- | --- | --- |
 | `device list` says offline | UU host heartbeat is absent | Check power, network, login, and host service |
-| Online, terminal open timeout | Host service is reachable but agent session did not open | Restore a display or independent SSH/Screen Sharing path |
-| Terminal works, GUI stalls | Agent is healthy; capture/display path is not | Inspect displays and install or reconnect a framebuffer |
+| Online, terminal open timeout | Host service is reachable but the terminal-agent session did not open | Test GUI separately; inspect agent/version state or use optional SSH |
+| Terminal works, GUI stalls | Agent is healthy; capture/display path is not | Inspect permissions and display state for the reproduced GUI failure |
 | GUI works, terminal unsupported | Platform/version lacks the terminal agent | Use GUI once to install SSH |
 | CLI exits `2` | Local controller IPC is unavailable | Verify `uu-remote-bridge.service` and UU server |
 | CLI exits `5` | Vendor operation timed out | Do not retry destructive actions blindly |

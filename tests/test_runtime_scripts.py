@@ -295,6 +295,30 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("unix:path=${XDG_RUNTIME_DIR:-/run/user/$UID}/bus", verifier)
         self.assertNotIn('rdp_port="$(gsettings ', verifier)
 
+    def test_verifier_waits_for_the_real_relay_and_selected_input_route(self):
+        verifier = (REPOSITORY / "scripts" / "verify.sh").read_text()
+
+        readiness_loop = verifier.index("for _ in {1..180}; do")
+        first_service_check = verifier.index(
+            '"${systemctl_user[@]}" is-active --quiet '
+            "uu-remote-bridge.service",
+            readiness_loop,
+        )
+        first_relay_check = verifier.index(
+            "relay_listener_ready",
+            first_service_check,
+        )
+        first_x11_check = verifier.index(
+            "x11_route_ready",
+            first_service_check,
+        )
+        first_wait_end = verifier.index("done", readiness_loop)
+
+        self.assertLess(first_service_check, first_relay_check)
+        self.assertLess(first_relay_check, first_wait_end)
+        self.assertLess(first_x11_check, first_wait_end)
+        self.assertIn('[[ "$keyboard_route" != x11 ]]', verifier)
+
     def test_user_service_starts_from_default_target(self):
         unit = (REPOSITORY / "systemd" / "uu-remote-bridge.service").read_text()
         self.assertIn("WantedBy=default.target", unit)

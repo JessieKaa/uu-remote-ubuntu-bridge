@@ -181,6 +181,19 @@ requires the approved product binary, audited health-monitor backup, input
 hooks, keyboard route, relay listener, account marker, and controller history.
 The post-install checks require an exact runtime digest.
 
+The first live 4.34 retry exposed a separate service-readiness race. A
+`Type=simple` user service becomes `active` as soon as its launcher starts,
+before the private GNOME RDP relay has necessarily opened port 3390. Stale
+Wine process names from the preceding stop could satisfy the old readiness
+loop, so the verifier ran during that sub-second gap and the transaction
+correctly rolled back even though the relay opened one second later.
+
+The verifier now waits for the real GNOME daemon to own the configured relay
+listener and, when `UURB_KEYBOARD_ROUTE=x11`, for the native X11 helper and its
+ready record. It still validates every condition independently after the wait.
+This is a readiness correction, not a bypass: an absent relay or input helper
+still fails closed after the bounded 45-second window.
+
 ## Reusing it on another computer
 
 Keep that computer's Wine prefix, updater state, keyring credential, and input

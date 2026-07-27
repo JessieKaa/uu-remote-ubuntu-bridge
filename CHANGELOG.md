@@ -104,6 +104,9 @@ locked by the release manifest.
 - make new MinGW compatibility builds omit PE timestamps and compare legacy
   health stubs after normalizing only the COFF timestamp and PE checksum,
   retaining byte-exact rejection for every executable field
+- wait for the actual GNOME relay listener and the selected direct-X11 helper
+  before initial runtime verification, preventing stale Wine process names
+  from turning normal service startup into a false promotion failure
 - avoid duplicate GitHub validation runs by validating feature work on pull
   requests and direct pushes only on `main`
 - keep the login-preservation gate strict for registry, user-cache, identity,
@@ -129,7 +132,7 @@ locked by the release manifest.
 
 ### Validation
 
-- all 78 source, shell, documentation, updater, transaction, migration, and
+- all 84 source, shell, documentation, updater, transaction, migration, and
   helper-build tests pass
 - the promotion fixture preserves an existing account through an in-place
   update, while deliberate registry damage restores the complete old prefix

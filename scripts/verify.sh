@@ -45,6 +45,23 @@ systemctl_user=(
     "DBUS_SESSION_BUS_ADDRESS=unix:path=${XDG_RUNTIME_DIR:-/run/user/$UID}/bus"
     /usr/bin/systemctl --user
 )
+saved_rdp_port="$(saved_setting UURB_RDP_PORT)"
+rdp_port="${UURB_RDP_PORT:-${saved_rdp_port:-3390}}"
+saved_keyboard_route="$(saved_setting UURB_KEYBOARD_ROUTE)"
+keyboard_route="${UURB_KEYBOARD_ROUTE:-${saved_keyboard_route:-rdp}}"
+
+relay_listener_ready() {
+    /usr/bin/ss -H -ltnp "sport = :$rdp_port" 2>/dev/null | \
+        /usr/bin/grep -q 'gnome-remote-de'
+}
+
+x11_route_ready() {
+    [[ "$keyboard_route" != x11 ]] || {
+        [[ -x "$x11_input_helper" ]] &&
+        pgrep -u "$UID" -f "$x11_input_helper" >/dev/null &&
+        [[ -s "$x11_input_ready_file" ]]
+    }
+}
 
 while (($#)); do
     case "$1" in
@@ -83,7 +100,9 @@ fail() {
 for _ in {1..180}; do
     if "${systemctl_user[@]}" is-active --quiet uu-remote-bridge.service && \
        pgrep -u "$UID" -f 'GameViewerServer\.exe' >/dev/null && \
-       pgrep -u "$UID" -f 'sdl-freerdp\.exe' >/dev/null; then
+       pgrep -u "$UID" -f 'sdl-freerdp\.exe' >/dev/null && \
+       relay_listener_ready && \
+       x11_route_ready; then
         break
     fi
     sleep 0.25
@@ -172,8 +191,6 @@ else
     fail 'input broker physical-key pacing is missing or differs from saved settings'
 fi
 
-saved_keyboard_route="$(saved_setting UURB_KEYBOARD_ROUTE)"
-keyboard_route="${UURB_KEYBOARD_ROUTE:-${saved_keyboard_route:-rdp}}"
 active_keyboard_route="$(
     /usr/bin/sed -n 's/.* keyboard-route=\([^[:space:]]*\).*/\1/p' \
         <<<"$broker_configuration"
@@ -200,16 +217,13 @@ else
     pass 'compatible RDP physical-key route is active'
 fi
 
-saved_rdp_port="$(saved_setting UURB_RDP_PORT)"
-rdp_port="${UURB_RDP_PORT:-${saved_rdp_port:-3390}}"
 configured_rdp_port="$(
     /usr/bin/gsettings get org.gnome.desktop.remote-desktop.rdp port | \
         /usr/bin/awk '{print $2}'
 )"
 if [[ "$configured_rdp_port" != "$rdp_port" ]]; then
     fail "GNOME RDP is configured for port $configured_rdp_port, expected $rdp_port"
-elif /usr/bin/ss -H -ltnp "sport = :$rdp_port" 2>/dev/null | \
-     /usr/bin/grep -q 'gnome-remote-de'; then
+elif relay_listener_ready; then
     pass "GNOME RDP relay owns localhost:$rdp_port"
 else
     fail "GNOME RDP relay is unavailable on localhost:$rdp_port"

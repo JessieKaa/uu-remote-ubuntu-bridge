@@ -155,7 +155,8 @@ A newer release can enter the live prefix only when all of these gates agree:
 3. The acceptance is bound to both the installer SHA-256 and complete patched
    server SHA-256.
 4. A maintainer recorded successful disposable-prefix, controller-input,
-   disconnect/reconnect, service-restart, and login-preservation tests.
+   disconnect/reconnect, stopped-prefix cold-start, service-restart, fresh
+   signaling-room, and login-preservation tests.
 5. The evidence file exists in the same pinned commit.
 6. Stability is between 270 and 1800 seconds.
 7. `--auto-promote-accepted` is enabled.
@@ -174,8 +175,9 @@ The transaction then:
 6. reapplies the exact accepted compatibility manifest;
 7. compares the UU login registry section and both account-state trees
    byte-for-byte before opening UU;
-8. starts UU and runs two runtime checks separated by the accepted stability
-   interval; and
+8. starts UU, requires startup-only driver enumeration to finish and a fresh
+   signaling room to be created, then runs two runtime checks separated by the
+   accepted stability interval; and
 9. commits the result only if XRDP remains in its original active state.
 
 Any exception, failed hash, missing login marker, account-state change,

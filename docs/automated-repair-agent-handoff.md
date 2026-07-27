@@ -128,12 +128,24 @@ Preserve these decisions:
     with the approved 4.33 server patches. Each unsupported `gvinput`/HID
     install consumed one CPU and delayed setup by roughly 84–218 seconds.
     Reversibly making only `devcon.exe` unavailable reduced the same input-init
-    boundary to roughly 0.8–1.1 seconds. Treat this as strong evidence for a
-    permanent, rollback-safe suppression of the Windows kernel-driver path,
-    not as permission to delete the original executable or blindly copy the
-    workaround to an unknown release. The relay session in this observation
-    was cross-region, but its recorded input-delay counters were not the cause
-    of this setup stall.
+    boundary to roughly 0.8–1.1 seconds. A success-returning stub was not
+    equivalent because UU then waited for a kernel device that Wine cannot
+    create. Preserve the audited vendor file as `devcon.exe.uu-original`.
+14. **“Finding routes” can precede route selection:** a later cold start spent
+    about two CPU cores in `update_gvinput` before signaling. The dedicated
+    Wine registry contained 527 failed `gvinput` roots and 21,894 retained
+    Bluetooth observations. Prefix-local cleanup and disabling Wine-only
+    Bluetooth enumeration reduced the scan to 8–9 ms and restored fresh
+    signaling-room creation. Do not change host routes, DNS, XRDP, Ubuntu
+    Bluetooth, or the firewall for this symptom. Use
+    `uu-remote repair-registry`; its fail-closed inspector refuses unrelated
+    root devices and retains a private registry backup.
+15. **Warm promotion checks are not cold-start acceptance:** UU 4.34 passed a
+    warm guarded promotion but failed the next production cold start. The
+    complete 4.33 snapshot was atomically restored without changing XRDP, and
+    4.33 then reproduced the same registry scan. Require a stopped-prefix cold
+    start, `update_gvinput end`, and fresh `room_state_changed: created`
+    evidence for future releases.
 
 The chronological evidence is in
 [Debugging Journey](debugging-journey.md), and the reusable investigation

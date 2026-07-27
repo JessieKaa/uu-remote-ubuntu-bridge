@@ -58,9 +58,34 @@ if [[ -f "$healthd.uu-original" ]]; then
         exit 1
     fi
 fi
+release_version="$(manifest_field version)"
+devcon="$uu_bin/drivers/devcon.exe"
+devcon_backup="$devcon.uu-original"
+case "$release_version" in
+    4.33.0.8907|4.34.0.8979)
+        devcon_original_sha256='46731d6ea59dd9b63ad641c79646bb5ff64e1b877a1226536e3fe34d1ab4ee10'
+        ;;
+    *)
+        devcon_original_sha256=''
+        ;;
+esac
+if [[ -f "$devcon_backup" ]] &&
+   { [[ -z "$devcon_original_sha256" ]] ||
+     [[ "$(sha256sum "$devcon_backup" | awk '{print $1}')" != \
+        "$devcon_original_sha256" ]]; }; then
+    printf 'Refusing to restore an unknown devcon.exe backup.\n' >&2
+    exit 1
+fi
+if [[ -f "$devcon_backup" && -e "$devcon" ]] &&
+   { [[ ! -f "$devcon" ]] ||
+     [[ "$(sha256sum "$devcon" | awk '{print $1}')" != \
+        "$devcon_original_sha256" ]]; }; then
+    printf 'Refusing to overwrite an unknown live devcon.exe.\n' >&2
+    exit 1
+fi
 
 if [[ "$dry_run" == true ]]; then
-    printf 'PASS  audited server and health-monitor backups can be restored.\n'
+    printf 'PASS  audited server, health-monitor, and driver-helper backups can be restored.\n'
     printf 'INFO  purge=%s; no service, file, credential, or RDP setting changed.\n' \
         "$purge"
     exit 0
@@ -89,13 +114,26 @@ fi
 if [[ -f "$healthd.uu-original" ]]; then
     install -m 0755 "$healthd.uu-original" "$healthd"
 fi
+if [[ -f "$devcon_backup" ]]; then
+    install -m 0755 "$devcon_backup" "$devcon"
+fi
+if [[ "$purge" == false && -f "$wine_prefix/system.reg" ]]; then
+    WINEPREFIX="$wine_prefix" WINEDEBUG=-all \
+        /opt/wine-stable/bin/wine reg add \
+        'HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\winebth' \
+        /v Start /t REG_DWORD /d 3 /f >/dev/null
+    "$repo_dir/scripts/stop-wine-prefix" \
+        "$wine_prefix" /opt/wine-stable/bin/wineserver || true
+fi
 
 rm -f \
     "$HOME/.local/bin/uu-remote" \
     "$HOME/.local/bin/uu-remote-bridge" \
     "$HOME/.local/bin/uu-remote-upgrade" \
     "$HOME/.local/bin/uu-agent" \
+    "$HOME/.local/libexec/uu-clean-wine-device-registry" \
     "$HOME/.local/libexec/uu-connection-status" \
+    "$HOME/.local/libexec/uu-inspect-wine-device-registry.py" \
     "$HOME/.local/libexec/uu-remote-stop-wine-prefix" \
     "$HOME/.local/bin/uu-keyring-unlock" \
     "$HOME/.config/systemd/user/uu-keyring-unlock.service" \

@@ -67,6 +67,27 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("--allow-runtime-drift", verifier)
         self.assertIn("installed runtime differs from pulled source", verifier)
 
+    def test_wine_device_registry_hygiene_is_reversible_and_reusable(self):
+        installer = (REPOSITORY / "install.sh").read_text()
+        uninstaller = (REPOSITORY / "uninstall.sh").read_text()
+        verifier = (REPOSITORY / "scripts" / "verify.sh").read_text()
+        command = (REPOSITORY / "scripts" / "uu-remote").read_text()
+        cleaner = (
+            REPOSITORY / "scripts" / "clean-wine-device-registry"
+        ).read_text()
+        digest = (REPOSITORY / "scripts" / "runtime-source-digest").read_text()
+
+        self.assertIn('devcon_backup="$devcon_exe.uu-original"', installer)
+        self.assertIn("clean-wine-device-registry", installer)
+        self.assertIn("system.reg.before-device-hygiene", cleaner)
+        self.assertIn("--manage-service", cleaner)
+        self.assertIn("restore an unknown devcon.exe backup", uninstaller)
+        self.assertIn("overwrite an unknown live devcon.exe", uninstaller)
+        self.assertIn("Wine device registry cannot accumulate", verifier)
+        self.assertIn("repair-registry)", command)
+        self.assertIn("scripts/clean-wine-device-registry", digest)
+        self.assertIn("scripts/inspect-wine-device-registry.py", digest)
+
     def test_health_stub_comparison_ignores_only_pe_build_metadata(self):
         comparer = REPOSITORY / "scripts" / "compare-pe-normalized.py"
         builder = (REPOSITORY / "scripts" / "build-compat.sh").read_text()

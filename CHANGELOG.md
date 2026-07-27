@@ -19,9 +19,9 @@ locked by the release manifest.
 - opt-in guarded promotion for a newer exact-hash release carrying a complete
   maintainer acceptance record, with in-place account reuse and full-prefix
   rollback
-- approved, hash-bound UU `4.34.0.8979` support after semantic patch review,
-  disposable-prefix validation, controller reconnect/input testing, and a
-  297-second canary
+- hash-bound UU `4.34.0.8979` patch support after semantic review; its former
+  promotion acceptance is withdrawn until a stopped-prefix cold-start and
+  fresh signaling test pass
 - an absolute `UURB_WINEPREFIX` canary override for testing a copied prefix
   without replacing the production prefix
 - a runtime-discovered `uu-agent` wrapper for the vendor controller CLI,
@@ -107,6 +107,15 @@ locked by the release manifest.
 - wait for the actual GNOME relay listener and the selected direct-X11 helper
   before initial runtime verification, preventing stale Wine process names
   from turning normal service startup into a false promotion failure
+- suppress the exact audited `devcon.exe` while retaining its vendor backup,
+  transactionally remove accumulated `gvinput` records, and disable Bluetooth
+  enumeration only inside UU's dedicated Wine prefix
+- prevent a “finding routes” startup stall caused by 527 failed virtual-input
+  roots and 21,894 retained Wine Bluetooth devices; cold device initialization
+  now completes in 8–9 ms instead of consuming two CPU cores for minutes
+- require the current service start to complete device initialization and
+  create a fresh signaling room, so a warm canary cannot authorize promotion
+  by itself
 - avoid duplicate GitHub validation runs by validating feature work on pull
   requests and direct pushes only on `main`
 - keep the login-preservation gate strict for registry, user-cache, identity,
@@ -132,7 +141,7 @@ locked by the release manifest.
 
 ### Validation
 
-- all 84 source, shell, documentation, updater, transaction, migration, and
+- all 88 source, shell, documentation, updater, transaction, migration, and
   helper-build tests pass
 - production promotion from UU `4.33.0.8907` to `4.34.0.8979` passed both
   runtime checks while preserving the account, direct-X11 input profile, and

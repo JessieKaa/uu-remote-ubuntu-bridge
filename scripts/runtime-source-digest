@@ -12,8 +12,10 @@ runtime_files=(
     scripts/build-compat.sh
     scripts/build-libei.sh
     scripts/build-winpr.sh
+    scripts/clean-wine-device-registry
     scripts/compare-pe-normalized.py
     scripts/configure-unattended.sh
+    scripts/inspect-wine-device-registry.py
     scripts/runtime-settings.sh
     scripts/runtime-source-digest
     scripts/stop-wine-prefix

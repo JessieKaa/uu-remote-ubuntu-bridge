@@ -342,14 +342,18 @@ uu-remote restart
 uu-remote stop
 uu-remote logs
 uu-remote login       # one-time sign-in or account recovery on this desktop
+uu-remote repair-registry  # bounded repair for a “finding routes” cold-start stall
 scripts/verify.sh --quick
 scripts/verify.sh
 ```
 
 The full verifier waits 270 seconds and proves the same server PID crosses
 UU's former four-minute failure interval. It also confirms that the installed
-runtime was built from the current checkout and that GNOME RDP remains below
-its guarded descriptor threshold.
+runtime was built from the current checkout, the current cold start completed
+device initialization and signaling, and GNOME RDP remains below its guarded
+descriptor threshold. The registry repair is idempotent and affects only the
+dedicated UU Wine prefix; see
+[Troubleshooting](docs/troubleshooting.md#controller-remains-at-finding-routes).
 
 ## Updating for a new UU release
 

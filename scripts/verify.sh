@@ -26,6 +26,16 @@ server="$wine_prefix/drive_c/Program Files/Netease/GameViewer/bin/$(manifest_fie
 healthd="$wine_prefix/drive_c/Program Files/Netease/GameViewer/bin/$(manifest_field health_monitor.filename)"
 healthd_original_sha256="$(manifest_field health_monitor.original_sha256)"
 healthd_stub="$repo_dir/build/compat/uu-healthd-stub.exe"
+devcon="$wine_prefix/drive_c/Program Files/Netease/GameViewer/bin/drivers/devcon.exe"
+devcon_backup="$devcon.uu-original"
+case "$release_version" in
+    4.33.0.8907|4.34.0.8979)
+        devcon_original_sha256='46731d6ea59dd9b63ad641c79646bb5ff64e1b877a1226536e3fe34d1ab4ee10'
+        ;;
+    *)
+        devcon_original_sha256=''
+        ;;
+esac
 freerdp="$wine_prefix/drive_c/Program Files/FreeRDP/sdl-freerdp.exe"
 libei_backport="$wine_prefix/compat/libei/libei.so.1.2.1"
 network_filter="$wine_prefix/compat/uu-network-filter.so"
@@ -37,6 +47,7 @@ runtime_digest_file="$wine_prefix/compat/.runtime-source-sha256"
 # target process's normal GetTempPathW() location.
 bridge_log="$wine_prefix/drive_c/users/$bridge_user/AppData/Local/Temp/uu-input-bridge.log"
 broker_log="$wine_prefix/drive_c/users/$bridge_user/Temp/uu-input-broker.log"
+server_log_dir="$wine_prefix/drive_c/Program Files/Netease/GameViewer/log/server/log"
 stability_seconds=270
 allow_runtime_drift=false
 errors=0
@@ -61,6 +72,18 @@ x11_route_ready() {
         pgrep -u "$UID" -f "$x11_input_helper" >/dev/null &&
         [[ -s "$x11_input_ready_file" ]]
     }
+}
+
+server_startup_ready() {
+    local modified
+
+    [[ "$service_start_epoch" =~ ^[0-9]+$ ]] || return 1
+    [[ -n "$latest_server_log" && -f "$latest_server_log" ]] || return 1
+    modified="$(stat -c %Y "$latest_server_log" 2>/dev/null || true)"
+    [[ "$modified" =~ ^[0-9]+$ ]] || return 1
+    ((modified >= service_start_epoch)) || return 1
+    grep -q 'update_gvinput.*end' "$latest_server_log" &&
+        grep -q 'room_state_changed: created' "$latest_server_log"
 }
 
 while (($#)); do
@@ -114,6 +137,29 @@ else
     fail 'systemd user service is not active'
 fi
 
+service_started_at="$(
+    "${systemctl_user[@]}" show uu-remote-bridge.service \
+        -p ExecMainStartTimestamp --value 2>/dev/null || true
+)"
+service_start_epoch="$(date -d "$service_started_at" +%s 2>/dev/null || true)"
+latest_server_log=''
+for _ in {1..240}; do
+    latest_server_log="$(
+        find "$server_log_dir" -maxdepth 1 -type f -name 'log_*.txt' \
+            -printf '%T@ %p\n' 2>/dev/null | \
+            sort -nr | head -n 1 | cut -d' ' -f2-
+    )"
+    if server_startup_ready; then
+        break
+    fi
+    sleep 0.25
+done
+if server_startup_ready; then
+    pass 'current cold start completed device initialization and signaling'
+else
+    fail 'current service start did not complete device initialization and signaling'
+fi
+
 pass "approved UU release manifest $release_version is active"
 
 expected_runtime_digest="$("$repo_dir/scripts/runtime-source-digest")"
@@ -142,6 +188,23 @@ if [[ -f "$healthd.uu-original" ]] && \
     pass 'health monitor stub is installed with an audited backup'
 else
     fail 'health monitor stub or backup verification failed'
+fi
+
+if [[ -n "$devcon_original_sha256" ]] &&
+   [[ ! -e "$devcon" ]] &&
+   [[ -f "$devcon_backup" ]] &&
+   [[ "$(sha256sum "$devcon_backup" | awk '{print $1}')" == \
+      "$devcon_original_sha256" ]]; then
+    pass 'unsupported Windows driver installer is suppressed with an audited backup'
+else
+    fail 'devcon suppression or audited backup verification failed'
+fi
+
+if "$repo_dir/scripts/inspect-wine-device-registry.py" verify \
+    "$wine_prefix" >/dev/null; then
+    pass 'Wine device registry cannot accumulate unsupported input or Bluetooth devices'
+else
+    fail 'Wine device registry hygiene is missing or stale devices remain'
 fi
 
 if [[ -f "$freerdp" ]] && \

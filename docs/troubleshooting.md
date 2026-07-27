@@ -22,6 +22,51 @@ installer, for example:
   --grd-fd-restart-threshold 4096
 ```
 
+## Controller remains at “finding routes”
+
+This message can be misleading: the controller may be waiting for the host to
+finish local startup before any transport route can be selected. On the
+affected workstation, `GameViewerServer.exe` used about two CPU cores and its
+newest log stopped at:
+
+```text
+update_gvinput start
+```
+
+The dedicated Wine registry had accumulated 527 failed `gvinput` devices and
+21,894 Bluetooth observations while Ubuntu's Bluetooth scanner was active.
+UU enumerated those records synchronously before joining its signaling room.
+This was not an Ethernet, DNS, firewall, XRDP, or controller-route failure.
+
+Current installations make the audited `devcon.exe` unavailable while keeping
+its exact vendor binary as `devcon.exe.uu-original`, disable Bluetooth only
+inside UU's dedicated Wine prefix, and remove only recognized stale device
+records. Existing installations can apply the same transactional repair:
+
+```bash
+uu-remote repair-registry
+./scripts/verify.sh --quick
+```
+
+The command stops and restarts only `uu-remote-bridge.service`. It keeps a
+mode-0600 `system.reg.before-device-hygiene-*` backup under
+`$WINEPREFIX/compat/registry-backups`, refuses a root-device subtree containing
+an unrelated device, and does not change Ubuntu Bluetooth or XRDP.
+
+A healthy cold start records `update_gvinput end` within milliseconds and then
+`room_state_changed: created`. Inspect without publishing account metadata:
+
+```bash
+server_logs="$HOME/.local/share/wineprefixes/uu-remote/drive_c/Program Files/Netease/GameViewer/log/server/log"
+latest="$(find "$server_logs" -type f -name 'log_*.txt' -printf '%T@ %p\n' |
+  sort -nr | head -n 1 | cut -d' ' -f2-)"
+rg 'update_gvinput|input_device_count|room_state_changed: created' "$latest"
+```
+
+Do not copy this cleanup to a shared Wine prefix or delete arbitrary
+`ROOT\HIDCLASS` entries. Its preflight assumptions are valid because this
+project owns a dedicated UU-only prefix.
+
 ## UU is offline after reboot
 
 Inspect the unattended boot chain without displaying either password:

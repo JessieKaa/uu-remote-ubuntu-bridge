@@ -200,11 +200,14 @@ Validate all user-visible behavior, not only a successful patch command:
 3. Mouse motion, buttons, wheel, and drag work without a forced disconnect.
 4. Printable keys, modifiers, shortcuts, and key-up events work.
 5. Clipboard behavior matches the configured policy.
-6. Disconnect/reconnect and service restart recover automatically.
-7. The server PID survives at least 270 seconds.
-8. `scripts/verify.sh` passes.
-9. `./uninstall.sh --dry-run` validates both rollback backups.
-10. `./uninstall.sh` restores byte-identical audited originals.
+6. Stop the complete Wine prefix, start it cold, and confirm the newest server
+   log reaches both `update_gvinput end` and
+   `room_state_changed: created`.
+7. Disconnect/reconnect and service restart recover automatically.
+8. The server PID survives at least 270 seconds.
+9. `scripts/verify.sh` passes.
+10. `./uninstall.sh --dry-run` validates every rollback backup.
+11. `./uninstall.sh` restores byte-identical audited originals.
 
 Keep controller-side proof free of passwords and personal desktop content.
 

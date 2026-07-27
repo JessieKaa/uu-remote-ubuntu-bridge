@@ -9,6 +9,7 @@ wine_bin="${WINE_BIN:-/opt/wine-stable/bin/wine}"
 wineserver_bin="${WINESERVER_BIN:-/opt/wine-stable/bin/wineserver}"
 wine_stop_bin="$HOME/.local/libexec/uu-remote-stop-wine-prefix"
 connection_status_bin="$HOME/.local/libexec/uu-connection-status"
+registry_cleaner_bin="$HOME/.local/libexec/uu-clean-wine-device-registry"
 app_dir="$WINEPREFIX/drive_c/Program Files/Netease/GameViewer"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/uu-remote"
 systemctl_user=(
@@ -41,6 +42,13 @@ case "${1:-open}" in
         ;;
     network)
         exec /usr/bin/python3 "$connection_status_bin"
+        ;;
+    repair-registry)
+        if [[ ! -x "$registry_cleaner_bin" ]]; then
+            notify_error 'The Wine device-registry repair helper is not installed.'
+            exit 1
+        fi
+        exec "$registry_cleaner_bin" --manage-service "$WINEPREFIX"
         ;;
     update)
         shift || true
@@ -86,7 +94,7 @@ case "${1:-open}" in
         shift || true
         ;;
     *)
-        printf 'usage: uu-remote [open|login|status|network|restart|stop|logs|update|upgrade]\n' >&2
+        printf 'usage: uu-remote [open|login|status|network|repair-registry|restart|stop|logs|update|upgrade]\n' >&2
         exit 2
         ;;
 esac

@@ -408,9 +408,22 @@ manifest_field() {
 uu_download_url="$(manifest_field installer.url)"
 uu_installer_filename="$(manifest_field installer.filename)"
 uu_installer_sha256="$(manifest_field installer.sha256)"
+release_version="$(manifest_field version)"
 server_exe="$uu_bin/$(manifest_field server.filename)"
 healthd_exe="$uu_bin/$(manifest_field health_monitor.filename)"
 healthd_sha256="$(manifest_field health_monitor.original_sha256)"
+devcon_exe="$uu_bin/drivers/devcon.exe"
+devcon_backup="$devcon_exe.uu-original"
+case "$release_version" in
+    4.33.0.8907|4.34.0.8979)
+        devcon_sha256='46731d6ea59dd9b63ad641c79646bb5ff64e1b877a1226536e3fe34d1ab4ee10'
+        ;;
+    *)
+        printf 'No audited devcon.exe identity exists for UU %s.\n' \
+            "$release_version" >&2
+        exit 1
+        ;;
+esac
 
 export WINEPREFIX="$wine_prefix"
 export WINEDEBUG=-all
@@ -558,8 +571,32 @@ elif [[ ! -f "$healthd_backup" ]] || \
 fi
 install -m 0755 "$compat_build/uu-healthd-stub.exe" "$healthd_exe"
 
+if [[ -f "$devcon_exe" ]]; then
+    if [[ "$(sha256sum "$devcon_exe" | awk '{print $1}')" != \
+          "$devcon_sha256" ]]; then
+        printf 'Refusing to suppress an unknown devcon.exe build.\n' >&2
+        exit 1
+    fi
+    if [[ -f "$devcon_backup" ]]; then
+        if [[ "$(sha256sum "$devcon_backup" | awk '{print $1}')" != \
+              "$devcon_sha256" ]]; then
+            printf 'Refusing to use an unknown devcon.exe backup.\n' >&2
+            exit 1
+        fi
+        rm -f "$devcon_exe"
+    else
+        mv "$devcon_exe" "$devcon_backup"
+    fi
+elif [[ ! -f "$devcon_backup" ]] || \
+     [[ "$(sha256sum "$devcon_backup" | awk '{print $1}')" != \
+        "$devcon_sha256" ]]; then
+    printf 'The suppressed devcon.exe has no audited backup.\n' >&2
+    exit 1
+fi
+
 "$python_bin" "$repo_dir/scripts/patch-gameviewer.py" patch "$server_exe" \
     --manifest "$installed_manifest"
+"$repo_dir/scripts/clean-wine-device-registry" "$wine_prefix"
 
 if [[ "$prefix_only" == true ]]; then
     printf '\nPrepared approved UU release in %s without changing RDP configuration or opening the login UI.\n' \
@@ -595,6 +632,10 @@ install -m 0755 "$repo_dir/scripts/upgrade-uu-remote.sh" \
     "$HOME/.local/bin/uu-remote-upgrade"
 install -m 0755 "$repo_dir/scripts/stop-wine-prefix" \
     "$HOME/.local/libexec/uu-remote-stop-wine-prefix"
+install -m 0755 "$repo_dir/scripts/clean-wine-device-registry" \
+    "$HOME/.local/libexec/uu-clean-wine-device-registry"
+install -m 0755 "$repo_dir/scripts/inspect-wine-device-registry.py" \
+    "$HOME/.local/libexec/uu-inspect-wine-device-registry.py"
 install -m 0755 "$repo_dir/scripts/uu_connection_status.py" \
     "$HOME/.local/libexec/uu-connection-status"
 install -m 0755 "$repo_dir/scripts/uu-keyring-unlock.py" \

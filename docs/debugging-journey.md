@@ -587,3 +587,68 @@ returned its complete source count with `error=0`, and broker/helper processing
 took 0-2 ms. No typed character or key value was recorded. This confirms that
 the successful visible result came from the new route rather than the still-
 available RDP fallback or the computer-keyboard panel.
+
+## 18. Separate a “finding routes” stall from transport routing
+
+An accepted in-place update from UU 4.33.0.8907 to 4.34.0.8979 passed file,
+login-state, relay, and warm-runtime checks, but a later cold launch left the
+controller indefinitely at “finding routes.” The new server log stopped at
+`update_gvinput start`; it had not yet joined its signaling room, so changing
+the physical network route could not address that state.
+
+The first bounded experiment made the audited `devcon.exe` unavailable. That
+had previously made controller-time input initialization return in about one
+second, while the unsupported executable consumed one CPU for 84–218 seconds.
+A no-op executable returning success was also rejected: UU waited for the
+kernel device to appear after the process returned. A fake success was
+therefore less correct than an immediate, explicit “file not found.”
+
+Because 4.34 still failed its production cold-start boundary, automatic
+promotion was disabled and the complete preserved 4.33 prefix was restored
+with an atomic same-filesystem directory swap. The 4.34 prefix was retained
+for analysis. XRDP remained active with the same PID throughout. Reinstalling
+the exact committed 4.33 runtime passed every bridge check—but its first cold
+start reached the same high-CPU scan. That disproved “4.34 alone is broken”
+and localized the real state outside the release executable.
+
+The dedicated prefix's `system.reg` was 34,389,195 bytes and contained:
+
+- 527 stale `ROOT\HIDCLASS` `gvinput` devices;
+- 518 matching fake mouse devices;
+- 1,044 matching `gvinput.inf`/`gvinputmf.inf` class instances; and
+- 21,894 `WINEBTH\DEVICE` roots represented by 87,582 registry sections.
+
+Ubuntu exposed only 29 `/sys/class/input` entries. Bluetooth discovery was
+active, and Wine had retained every observed Bluetooth address in this
+long-lived dedicated prefix. UU's startup detector synchronously traversed the
+amplified device registry at about 190% CPU before signaling.
+
+The repair was deliberately prefix-local:
+
+1. Retain a private complete `system.reg` backup.
+2. Validate that every target root HID/mouse device belongs to `gvinput`.
+3. Remove those stale enum records, matching class records, and unsupported
+   driver services.
+4. Set Wine's `winebth` service to disabled and remove its accumulated device
+   records.
+5. Keep Ubuntu Bluetooth, XRDP, routes, DNS, and the firewall unchanged.
+
+After cleanup, `system.reg` fell to about 3.9 MB. Two consecutive cold starts
+recorded `input_device_count:0`; `update_gvinput` completed in 8–9 ms and the
+signaling room reached `room_state_changed: created` about four seconds later.
+The 4.33 account state and the existing XRDP PID were unchanged.
+
+The permanent implementation is `scripts/clean-wine-device-registry`, backed
+by the fail-closed inspector `scripts/inspect-wine-device-registry.py`. The
+installer suppresses only an audited `devcon.exe`, keeps
+`devcon.exe.uu-original`, and runs the idempotent cleanup before startup.
+Operators can safely rerun the same transaction with:
+
+```bash
+uu-remote repair-registry
+```
+
+Future release acceptance must include a genuinely stopped-prefix cold start
+and fresh signaling-room evidence. A warm process check can prove that an
+already-running relay survived; it cannot prove that startup-only driver and
+device enumeration will finish.

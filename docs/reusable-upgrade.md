@@ -163,13 +163,23 @@ the installed health-monitor stub. The transaction entered
 `promotion-blocked`, left 4.33 installed, and kept the account and XRDP
 unchanged.
 
-The permanent correction builds the deterministic open-source compatibility
-verifier inside the pinned checkout before checking the live runtime. The
-pre-promotion check may tolerate only the expected source-digest difference
-between pulled tooling and the still-running bridge. It still requires the
-approved product binary, audited health-monitor backup, input hooks, keyboard
-route, relay listener, account marker, and controller history. The
-post-install checks require an exact runtime digest.
+Building the missing verifier then exposed a second, deeper issue: GNU's PE
+linker inserted the build time and recalculated the PE checksum. Two builds
+from identical source therefore had different whole-file hashes even though
+all executable content was identical.
+
+The permanent correction fixes `SOURCE_DATE_EPOCH`, requests no linker
+timestamp insertion for new builds, and compares legacy health stubs after
+zeroing only the documented COFF `TimeDateStamp` and optional-header
+`CheckSum` fields. Any code, data, import, header, or other-byte difference
+still fails. The promotion builds this verifier inside the pinned checkout
+before checking the live runtime.
+
+The pre-promotion check may tolerate only the expected source-digest
+difference between pulled tooling and the still-running bridge. It still
+requires the approved product binary, audited health-monitor backup, input
+hooks, keyboard route, relay listener, account marker, and controller history.
+The post-install checks require an exact runtime digest.
 
 ## Reusing it on another computer
 

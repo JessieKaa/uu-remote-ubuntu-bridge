@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -Eeuo pipefail
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1}"
 
 repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 output_dir="${1:-$repo_dir/build/compat}"
@@ -10,6 +11,7 @@ winegcc="${WINEGCC:-/opt/wine-stable/bin/winegcc}"
 host_cc="${HOST_CC:-gcc}"
 host_strip="${HOST_STRIP:-strip}"
 common=(-std=c11 -O2 -Wall -Wextra -Werror)
+pe_link=(-Wl,--no-insert-timestamp)
 
 for command in "$cc" "$strip" "$winegcc" "$host_cc" "$host_strip"; do
     if ! command -v "$command" >/dev/null 2>&1; then
@@ -20,22 +22,22 @@ done
 
 mkdir -p "$output_dir"
 
-"$cc" "${common[@]}" -shared \
+"$cc" "${common[@]}" "${pe_link[@]}" -shared \
     -o "$output_dir/uu-input-bridge.dll" \
     "$repo_dir/src/uu_input_bridge.c" -luser32
-"$cc" "${common[@]}" -municode -mwindows \
+"$cc" "${common[@]}" "${pe_link[@]}" -municode -mwindows \
     -o "$output_dir/uu-input-broker.exe" \
     "$repo_dir/src/uu_input_broker.c" -luser32 -lws2_32
-"$cc" "${common[@]}" -municode \
+"$cc" "${common[@]}" "${pe_link[@]}" -municode \
     -o "$output_dir/uu-injector.exe" \
     "$repo_dir/src/uu_injector.c"
-"$cc" "${common[@]}" -municode \
+"$cc" "${common[@]}" "${pe_link[@]}" -municode \
     -o "$output_dir/uu-service-control.exe" \
     "$repo_dir/src/uu_service_control.c" -ladvapi32
-"$cc" "${common[@]}" -mwindows \
+"$cc" "${common[@]}" "${pe_link[@]}" -mwindows \
     -o "$output_dir/uu-healthd-stub.exe" \
     "$repo_dir/src/winlogon.c"
-"$cc" "${common[@]}" -shared \
+"$cc" "${common[@]}" "${pe_link[@]}" -shared \
     -o "$output_dir/winpr-sspi-shim.dll" \
     "$repo_dir/src/winpr_sspi_shim.c"
 "$host_cc" "${common[@]}" -fPIC -shared \

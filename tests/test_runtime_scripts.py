@@ -67,6 +67,44 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("--allow-runtime-drift", verifier)
         self.assertIn("installed runtime differs from pulled source", verifier)
 
+    def test_health_stub_comparison_ignores_only_pe_build_metadata(self):
+        comparer = REPOSITORY / "scripts" / "compare-pe-normalized.py"
+        builder = (REPOSITORY / "scripts" / "build-compat.sh").read_text()
+        verifier = (REPOSITORY / "scripts" / "verify.sh").read_text()
+
+        self.assertIn("--no-insert-timestamp", builder)
+        self.assertIn("SOURCE_DATE_EPOCH", builder)
+        self.assertIn("compare-pe-normalized.py", verifier)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            left = bytearray(256)
+            left[:2] = b"MZ"
+            left[0x3C:0x40] = (0x80).to_bytes(4, "little")
+            left[0x80:0x84] = b"PE\0\0"
+            left[0x98:0x9A] = (0x20B).to_bytes(2, "little")
+            left[0x88:0x8C] = b"\x01\x02\x03\x04"
+            left[0xD8:0xDC] = b"\x05\x06\x07\x08"
+            right = bytearray(left)
+            right[0x88:0x8C] = b"\x11\x12\x13\x14"
+            right[0xD8:0xDC] = b"\x15\x16\x17\x18"
+            left_path = root / "left.exe"
+            right_path = root / "right.exe"
+            left_path.write_bytes(left)
+            right_path.write_bytes(right)
+            subprocess.run(
+                [str(comparer), str(left_path), str(right_path)],
+                check=True,
+            )
+            right[0xE0] = 1
+            right_path.write_bytes(right)
+            self.assertNotEqual(
+                0,
+                subprocess.run(
+                    [str(comparer), str(left_path), str(right_path)],
+                    capture_output=True,
+                ).returncode,
+            )
+
     def test_xrdp_private_bus_relay_is_supervised(self):
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
         self.assertIn("DBUS_SESSION_BUS_ADDRESS=$desktop_bus", launcher)

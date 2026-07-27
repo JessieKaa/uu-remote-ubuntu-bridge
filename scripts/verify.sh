@@ -117,7 +117,9 @@ fi
 if [[ -f "$healthd.uu-original" ]] && \
    [[ "$(sha256sum "$healthd.uu-original" | awk '{print $1}')" == \
       "$healthd_original_sha256" ]] && \
-   [[ -f "$healthd_stub" ]] && cmp -s "$healthd" "$healthd_stub"; then
+   [[ -f "$healthd_stub" ]] && \
+   /usr/bin/python3 "$repo_dir/scripts/compare-pe-normalized.py" \
+       "$healthd" "$healthd_stub" >/dev/null; then
     pass 'health monitor stub is installed with an audited backup'
 else
     fail 'health monitor stub or backup verification failed'

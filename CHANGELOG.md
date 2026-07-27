@@ -101,6 +101,9 @@ locked by the release manifest.
 - permit an operator-requested retry of a failed accepted promotion only after
   promotion tooling changed, while retaining the failed task under
   `tasks/retired` and refusing an unchanged retry loop
+- make new MinGW compatibility builds omit PE timestamps and compare legacy
+  health stubs after normalizing only the COFF timestamp and PE checksum,
+  retaining byte-exact rejection for every executable field
 - avoid duplicate GitHub validation runs by validating feature work on pull
   requests and direct pushes only on `main`
 - keep the login-preservation gate strict for registry, user-cache, identity,

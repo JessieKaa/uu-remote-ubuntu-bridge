@@ -664,8 +664,17 @@ if [[ "$relay_ready" != true ]]; then
     exit 1
 fi
 
-/usr/bin/xdotool search --name Ubuntu-Desktop-Relay \
-    windowactivate --sync >/dev/null 2>&1 || true
+relay_window_id="$(
+    /usr/bin/xdotool search --onlyvisible \
+        --name '^Ubuntu-Desktop-Relay$' 2>/dev/null \
+        | /usr/bin/tail -n 1
+)"
+if [[ -z "$relay_window_id" ]]; then
+    log 'Could not identify the Ubuntu desktop relay window.'
+    exit 1
+fi
+/usr/bin/xdotool windowactivate --sync "$relay_window_id" \
+    >/dev/null 2>&1 || true
 
 bootstrap_account() {
     /opt/wine-stable/bin/wine "$service_control_exe" \
@@ -677,8 +686,8 @@ bootstrap_account() {
     sleep 1
     /usr/bin/xdotool search --onlyvisible --name '网易UU远程' \
         windowminimize >/dev/null 2>&1 || true
-    /usr/bin/xdotool search --name Ubuntu-Desktop-Relay \
-        windowactivate --sync >/dev/null 2>&1 || true
+    /usr/bin/xdotool windowactivate --sync "$relay_window_id" \
+        >/dev/null 2>&1 || true
 }
 
 # UU's GUI sends the account-login IPC message that makes the background
@@ -690,6 +699,8 @@ supervise_server() {
     local last_pid="$1"
     local candidate
     local current_default_interface
+    local active_window_id
+    local focus_checks=0
     local grd_fd_count
     local health_checks=0
     local missing_checks=0
@@ -717,6 +728,18 @@ supervise_server() {
             else
                 log "Could not re-inject UU server process $candidate."
                 return 1
+            fi
+        fi
+        focus_checks=$((focus_checks + 1))
+        if ((focus_checks >= 4)); then
+            focus_checks=0
+            active_window_id="$(
+                /usr/bin/xdotool getactivewindow 2>/dev/null || true
+            )"
+            if [[ -n "$active_window_id" && \
+                  "$active_window_id" != "$relay_window_id" ]]; then
+                /usr/bin/xdotool windowactivate "$relay_window_id" \
+                    >/dev/null 2>&1 || true
             fi
         fi
         health_checks=$((health_checks + 1))

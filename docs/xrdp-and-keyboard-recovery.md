@@ -25,6 +25,31 @@ used a separate localhost-only RFB port. A VNC process can still depend on the
 same X display, however, so replacing an XRDP session can end that particular
 VNC mirror even though the two network listeners do not conflict.
 
+## Video works but all input stops
+
+The Wine bridge captures the full-screen `Ubuntu-Desktop-Relay` window on its
+private X display. Controller and terminal-agent diagnostics can activate the
+UU GUI on that same display. When this happened, video remained visible but
+the normal-user input broker recorded repeated `focus=timeout`, `result=0`,
+and `error=21` records because Wine could not return foreground ownership to
+the relay.
+
+Restore the relay without restarting UU:
+
+```bash
+uu-agent focus 'Ubuntu-Desktop-Relay'
+```
+
+The supervised launcher now checks the private active window once per second
+and activates the relay when another window takes focus. The guard starts
+after account bootstrap, so it does not interfere with the one-time login IPC
+exchange. It affects only the private Wine/Xvfb desktop, not the physical
+GNOME desktop.
+
+After reconnecting, require fresh content-free broker records with
+`focus=ready`, matching `count` and `result`, and `error=0`. Historical success
+alone does not prove that the current remote session delivered input.
+
 ## Safest recovery order
 
 Inspect the current attempt without changing the desktop:

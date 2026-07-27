@@ -94,44 +94,62 @@ window and inspect a fresh private screenshot. Never automate account
 publication, a purchase, firmware flashing, credential entry, or a destructive
 confirmation dialog.
 
-## Headless Mac: Separate GUI and Terminal Health
+## Headless Mac: Current Failure Evidence
 
-The 7050 iMac's operator later confirmed several successful UU GUI connections
-with the monitor unplugged. UU therefore works headlessly on this host without
-a dummy plug or virtual display. This supersedes the earlier inference that a
-missing active display caused the connection problem.
+The operator clarified that several monitor-free connections to the 7050 iMac
+were attempts, not successful sessions. Each remained at route optimization.
+Fresh controller evidence on 2026-07-27 showed:
 
-The observations remain useful when kept separate:
+- UU signaling and a TURN relay completed;
+- the Mac reported one screen but zero physical and zero virtual screens;
+- every negotiated video stream remained at `0x0`, `0 bps`, and zero decoded
+  frames until the controller ended the session;
+- a separate UU `term` attempt timed out waiting for the remote open response;
+- LAN SSH and macOS Screen Sharing refused connections.
 
-- the device remained online after its monitor was unplugged;
-- UU GUI connections opened repeatedly and were usable without the monitor;
-- one UU `term` attempt progressed through setup and then timed out waiting for
-  the remote open response;
-- SSH and macOS Screen Sharing were not listening at the time of that terminal
-  test.
+The connection therefore reaches the Mac, but there is currently no usable
+framebuffer or independent command path. This supersedes the earlier statement
+that headless GUI access was verified on this host.
 
-The terminal-agent timeout does not imply that the UU GUI, framebuffer, or
-input path is broken. Diagnose and verify the device heartbeat, GUI video, GUI
-input, and terminal agent independently.
+Temporarily attach a monitor or display-emulator plug. Once UU renders again:
 
-Do not reconnect a monitor, install BetterDisplay, or add a dummy plug solely
-to repair UU when its headless GUI already works. Remote Login and Screen
-Sharing are optional independent recovery paths. A virtual display is also
-optional and is appropriate only when a real resolution, framebuffer, or
-capture problem has been reproduced.
+1. Enable Remote Login and install a dedicated SSH public key.
+2. Install and start a persistent virtual screen.
+3. Reboot once, disconnect the monitor, and verify video, input, terminal, and
+   SSH independently.
 
-If a virtual screen is actually required, BetterDisplay supports one on macOS
-13.2 or later and can be installed from its official Homebrew cask:
+BetterDisplay supports virtual screens for headless remote access. On macOS
+13.2 or later, install it from its official Homebrew cask:
 
 ```bash
 brew install --cask betterdisplay
 open -a BetterDisplay
 ```
 
-Create only the named virtual screen needed for the reproduced display issue,
-then verify that macOS and UU both capture it. BetterDisplay's current CLI
-supports `create -type=VirtualScreen`, `virtualScreenName`, `resolutionList`,
-`virtualScreenHiDPI`, and `connected`. Query the installed version's help
+This repository includes a guarded Mac-side bootstrap. It is read-only unless
+`--execute` is supplied:
+
+```bash
+./scripts/bootstrap-headless-macos.sh
+./scripts/bootstrap-headless-macos.sh --execute
+```
+
+Run it only after a temporary monitor or display-emulator plug restores one
+working GUI session. The script can also enable Remote Login and install one
+public key, but those options are explicit and never accept or store a
+password:
+
+```bash
+./scripts/bootstrap-headless-macos.sh --execute \
+  --enable-remote-login \
+  --public-key-file /path/to/dedicated-key.pub
+```
+
+Create one named `1920x1080` virtual screen, configure BetterDisplay to start
+at login, and verify that macOS and UU both capture it before removing the
+temporary display. BetterDisplay's current CLI supports
+`create -type=VirtualScreen`, `virtualScreenName`, `useResolutionList`,
+`resolutionList`, and `virtualScreenHiDPI`. Query the installed version's help
 before scripting those parameters.
 
 ## Failure Interpretation
@@ -139,7 +157,8 @@ before scripting those parameters.
 | Observation | Meaning | Next action |
 | --- | --- | --- |
 | `device list` says offline | UU host heartbeat is absent | Check power, network, login, and host service |
-| Online, terminal open timeout | Host service is reachable but the terminal-agent session did not open | Test GUI separately; inspect agent/version state or use optional SSH |
+| Online, terminal open timeout | Host service is reachable but the terminal-agent session did not open | Test GUI separately; use independent SSH if already enabled |
+| GUI remains optimizing; video stays `0x0` | Signaling works but no framebuffer arrives | Temporarily attach a display, then configure a persistent virtual screen |
 | Terminal works, GUI stalls | Agent is healthy; capture/display path is not | Inspect permissions and display state for the reproduced GUI failure |
 | GUI works, terminal unsupported | Platform/version lacks the terminal agent | Use GUI once to install SSH |
 | CLI exits `2` | Local controller IPC is unavailable | Verify `uu-remote-bridge.service` and UU server |

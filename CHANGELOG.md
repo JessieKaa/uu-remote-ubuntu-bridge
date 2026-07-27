@@ -55,6 +55,9 @@ locked by the release manifest.
 
 ### Fixed
 
+- keep the private `Ubuntu-Desktop-Relay` window focused after controller or
+  terminal-agent diagnostics activate the UU GUI, preventing Wine focus
+  timeouts from leaving video visible while mouse and keyboard input fail
 - use the installed `codex-auto-review` model at medium reasoning effort for
   resumable repair tasks by default, while preserving explicit overrides
 - persist the absolute Codex executable selected during configuration so NVM
@@ -110,7 +113,7 @@ locked by the release manifest.
 
 ### Validation
 
-- all 73 source, shell, documentation, updater, transaction, migration, and
+- all 78 source, shell, documentation, updater, transaction, migration, and
   helper-build tests pass
 - the promotion fixture preserves an existing account through an in-place
   update, while deliberate registry damage restores the complete old prefix

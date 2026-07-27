@@ -121,6 +121,20 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("UU server was absent for 10 seconds", launcher)
         self.assertIn("Could not re-inject UU server process", launcher)
 
+    def test_private_display_keeps_desktop_relay_focused(self):
+        launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
+
+        self.assertIn("relay_window_id=", launcher)
+        self.assertIn("/usr/bin/xdotool getactivewindow", launcher)
+        self.assertIn(
+            'active_window_id" != "$relay_window_id"',
+            launcher,
+        )
+        self.assertIn(
+            '/usr/bin/xdotool windowactivate "$relay_window_id"',
+            launcher,
+        )
+
     def test_wine_launcher_exit_does_not_trigger_a_restart_storm(self):
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
         unit = (REPOSITORY / "systemd" / "uu-remote-bridge.service").read_text()

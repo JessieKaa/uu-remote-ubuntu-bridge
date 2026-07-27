@@ -432,10 +432,28 @@ class Promotion:
             )
             if process.returncode != 0 or not process.stdout.strip():
                 raise PromotionError(f"current {label} is not running")
+        compatibility_build = self.repository / "build/compat"
+        built = command(
+            [
+                str(self.repository / "scripts/build-compat.sh"),
+                str(compatibility_build),
+            ],
+            cwd=self.repository,
+            timeout=1800,
+        )
+        if built.returncode != 0:
+            raise PromotionError(
+                "cannot build the deterministic compatibility verifier: "
+                + command_error(built)
+            )
         environment = dict(os.environ)
         environment["WINEPREFIX"] = str(self.prefix)
         full_check = command(
-            [str(self.repository / "scripts/verify.sh"), "--quick"],
+            [
+                str(self.repository / "scripts/verify.sh"),
+                "--quick",
+                "--allow-runtime-drift",
+            ],
             cwd=self.repository,
             env=environment,
             timeout=180,

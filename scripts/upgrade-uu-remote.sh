@@ -396,10 +396,21 @@ else:
     print(json.loads(path.read_text(encoding="utf-8")).get("kind", ""))
 PY
 )"
+updater_phase="$(
+    /usr/bin/python3 - "$updater_state_dir/status.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+print(json.loads(path.read_text(encoding="utf-8")).get("phase", ""))
+PY
+)"
 if [[ -n "$pending_kind" && "$pending_kind" != approved-promotion ]]; then
     fail "pending maintenance task is $pending_kind; an unaccepted binary cannot be deployed"
 fi
-if [[ "$pending_kind" == approved-promotion ]]; then
+if [[ "$pending_kind" == approved-promotion ||
+      "$updater_phase" == promotion-blocked ]]; then
     if [[ "$promote_now" == true ]]; then
         log 'operator requested immediate guarded promotion'
         updater_command promote-now
@@ -411,6 +422,17 @@ if [[ "$pending_kind" == approved-promotion ]]; then
         updater_command status
         fail 'accepted release remains deferred; rerun apply when idle or explicitly add --now'
     fi
+    updater_phase="$(
+        /usr/bin/python3 - "$updater_state_dir/status.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")).get("phase", ""))
+PY
+    )"
+    [[ "$updater_phase" == promoted || "$updater_phase" == current ]] \
+        || fail "accepted product promotion ended in phase: $updater_phase"
 fi
 
 [[ -f "$installed_manifest" ]] || fail 'installed release manifest disappeared'

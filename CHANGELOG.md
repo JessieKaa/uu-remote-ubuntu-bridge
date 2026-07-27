@@ -94,6 +94,13 @@ locked by the release manifest.
 - snapshot the complete existing Wine prefix before a normal in-place UU
   installer update, preserve old audited backups, and recover automatically
   after an interrupted or failed transaction without automatic retry
+- build the deterministic compatibility verifier inside a pinned promotion
+  checkout, distinguish expected pre-refresh source drift from binary drift,
+  and require the wrapper to inspect the terminal promotion phase before
+  reporting success
+- permit an operator-requested retry of a failed accepted promotion only after
+  promotion tooling changed, while retaining the failed task under
+  `tasks/retired` and refusing an unchanged retry loop
 - avoid duplicate GitHub validation runs by validating feature work on pull
   requests and direct pushes only on `main`
 - keep the login-preservation gate strict for registry, user-cache, identity,

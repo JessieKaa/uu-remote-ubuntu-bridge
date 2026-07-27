@@ -1973,7 +1973,52 @@ class Manager:
             return
         task = self.load_pending()
         if task is None:
-            raise UpdateError("there is no accepted UU promotion waiting")
+            status = load_json(self.status_path, default={})
+            task_id = task_name(str(status.get("active_task", "")))
+            task_dir = self.tasks_dir / task_id
+            task_path = task_dir / "task.json"
+            if (
+                status.get("phase") != "promotion-blocked"
+                or not task_id
+                or not task_path.is_file()
+            ):
+                raise UpdateError("there is no accepted UU promotion waiting")
+            blocked = load_json(task_path)
+            if (
+                blocked.get("kind") != "approved-promotion"
+                or blocked.get("phase") != "promotion-blocked"
+                or blocked.get("result", {}).get("status") != "failed"
+            ):
+                raise UpdateError(
+                    "the retained task is not a failed accepted promotion"
+                )
+            self.fetch_repository()
+            current_source = self.remote_base_commit()
+            if current_source == blocked.get("source_commit"):
+                raise UpdateError(
+                    "the blocked promotion tooling has not changed; "
+                    "refusing to repeat the same failed transaction"
+                )
+            retired_root = self.tasks_dir / "retired"
+            retired_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            retired = retired_root / (
+                f"{task_id}-{datetime.now().strftime('%Y%m%dT%H%M%S')}"
+            )
+            task_dir.replace(retired)
+            try:
+                self.check()
+            except Exception:
+                if not task_dir.exists():
+                    retired.replace(task_dir)
+                raise
+            task = self.load_pending()
+            if task is None or task.get("kind") != "approved-promotion":
+                raise UpdateError(
+                    "the current repository did not re-queue the exact "
+                    "accepted release"
+                )
+            task["operator_retry_of"] = str(retired)
+            self.save_task(task)
         if task.get("kind") != "approved-promotion":
             raise UpdateError(
                 "the pending task is not an accepted UU promotion; "

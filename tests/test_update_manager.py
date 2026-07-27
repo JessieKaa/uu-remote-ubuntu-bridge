@@ -257,6 +257,57 @@ class UpdateManagerTests(unittest.TestCase):
             ):
                 manager.promote_now()
 
+    def test_operator_can_retry_blocked_promotion_only_after_tooling_change(
+        self,
+    ) -> None:
+        class RetryManager(Manager):
+            def fetch_repository(self):
+                return None
+
+            def remote_base_commit(self):
+                return "b" * 40
+
+            def check(self):
+                self.save_task(
+                    {
+                        "id": "approved-promotion-fixture",
+                        "kind": "approved-promotion",
+                        "phase": "promotion-queued",
+                        "source_commit": "b" * 40,
+                    }
+                )
+
+            def run_promotion(self, task, *, ignore_idle=False):
+                self.promoted = (task, ignore_idle)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            manager = RetryManager(self.config(Path(temporary)))
+            task_id = "approved-promotion-fixture"
+            task_dir = manager.tasks_dir / task_id
+            task_dir.mkdir(parents=True)
+            (task_dir / "task.json").write_text(
+                json.dumps(
+                    {
+                        "id": task_id,
+                        "kind": "approved-promotion",
+                        "phase": "promotion-blocked",
+                        "source_commit": "a" * 40,
+                        "result": {"status": "failed"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            manager.write_status(
+                "promotion-blocked",
+                active_task=task_id,
+            )
+
+            manager.promote_now()
+
+            self.assertTrue(manager.promoted[1])
+            self.assertIn("operator_retry_of", manager.promoted[0])
+            self.assertTrue((manager.tasks_dir / "retired").is_dir())
+
     def test_release_version_prefers_full_build_identifier(self) -> None:
         self.assertEqual(
             "4.32.200.8919",

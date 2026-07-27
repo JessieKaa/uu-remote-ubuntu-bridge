@@ -115,6 +115,13 @@ If promotion fails or is interrupted, the promotion helper restores that
 snapshot and marks the task `promotion-blocked`; it does not retry
 automatically.
 
+`apply --now` also checks the persisted terminal phase, not merely whether the
+pending file disappeared. A failed-closed transaction can therefore never be
+reported as a completed upgrade. An explicit later `apply --now` may re-queue
+that exact accepted release only when the fetched promotion tooling has a
+different source commit. The failed task is moved intact below
+`tasks/retired/`; unchanged code is refused so the same failure cannot loop.
+
 After a successful product promotion, the wrapper records the bridge runtime
 immediately before refreshing current source:
 
@@ -146,6 +153,23 @@ unix:path=/run/user/UID/bus
 
 This is session-independent and makes the same commands work from a physical
 desktop, XRDP, VNC, SSH, or an unattended user manager.
+
+## 2026-07-27 fail-closed lesson
+
+The first production run found a tooling preflight defect before the official
+4.34 installer ran. The pinned promotion checkout had no generated
+`build/compat/uu-healthd-stub.exe`, so its complete verifier could not compare
+the installed health-monitor stub. The transaction entered
+`promotion-blocked`, left 4.33 installed, and kept the account and XRDP
+unchanged.
+
+The permanent correction builds the deterministic open-source compatibility
+verifier inside the pinned checkout before checking the live runtime. The
+pre-promotion check may tolerate only the expected source-digest difference
+between pulled tooling and the still-running bridge. It still requires the
+approved product binary, audited health-monitor backup, input hooks, keyboard
+route, relay listener, account marker, and controller history. The
+post-install checks require an exact runtime digest.
 
 ## Reusing it on another computer
 

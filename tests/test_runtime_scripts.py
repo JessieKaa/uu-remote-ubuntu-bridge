@@ -53,6 +53,7 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("status --porcelain", upgrader)
         self.assertIn("merge --ff-only", upgrader)
         self.assertIn("updater_command promote-now", upgrader)
+        self.assertIn("accepted product promotion ended in phase", upgrader)
         self.assertIn("--skip-account-login", upgrader)
         self.assertIn("restore_runtime_backup", upgrader)
         self.assertIn("run_live_check --allow-runtime-drift", upgrader)

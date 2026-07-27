@@ -300,7 +300,7 @@ class PromotionTests(unittest.TestCase):
             )
 
             def fake_command(arguments, **kwargs):
-                if arguments[-1:] == ["--quick"]:
+                if "--quick" in arguments:
                     return subprocess.CompletedProcess(
                         arguments,
                         1,
@@ -331,6 +331,12 @@ class PromotionTests(unittest.TestCase):
                     PromotionError, "complete pre-promotion verification"
                 ):
                     promotion.current_runtime_check()
+
+            source = (
+                REPO_DIR / "scripts/promote-approved-release.py"
+            ).read_text()
+            self.assertIn("scripts/build-compat.sh", source)
+            self.assertIn("--allow-runtime-drift", source)
 
     def test_successful_promotion_keeps_login_and_never_manages_xrdp(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

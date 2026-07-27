@@ -26,6 +26,10 @@ locked by the release manifest.
   without replacing the production prefix
 - a runtime-discovered `uu-agent` wrapper for the vendor controller CLI,
   private display inspection, and bounded Mac terminal-agent workflows
+- a reusable `uu-remote upgrade` transaction that fast-forwards clean source,
+  promotes only a fully accepted UU build, preserves login and keyboard
+  settings, refreshes bridge code, verifies XRDP state, and keeps local
+  rollback copies
 
 ### Security
 
@@ -58,6 +62,8 @@ locked by the release manifest.
 - keep the private `Ubuntu-Desktop-Relay` window focused after controller or
   terminal-agent diagnostics activate the UU GUI, preventing Wine focus
   timeouts from leaving video visible while mouse and keyboard input fail
+- make `uu-agent` query the persistent systemd user bus so XRDP, VNC, SSH, and
+  nested desktop session buses cannot hide the healthy bridge
 - use the installed `codex-auto-review` model at medium reasoning effort for
   resumable repair tasks by default, while preserving explicit overrides
 - persist the absolute Codex executable selected during configuration so NVM

@@ -7,6 +7,11 @@ service_name="${UURB_SERVICE_NAME:-uu-remote-bridge.service}"
 wine_bin="${UURB_WINE_BIN:-/opt/wine-stable/bin/wine}"
 runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$UID}/uu-remote-bridge"
 default_prefix="$HOME/.local/share/wineprefixes/uu-remote"
+systemctl_user=(
+    /usr/bin/env
+    "DBUS_SESSION_BUS_ADDRESS=unix:path=${XDG_RUNTIME_DIR:-/run/user/$UID}/bus"
+    /usr/bin/systemctl --user
+)
 
 usage() {
     cat <<'EOF'
@@ -51,10 +56,10 @@ discover_runtime() {
     local pid
     local server_pid=""
 
-    /usr/bin/systemctl --user is-active --quiet "$service_name" \
+    "${systemctl_user[@]}" is-active --quiet "$service_name" \
         || fail "$service_name is not active"
     cgroup="$(
-        /usr/bin/systemctl --user show "$service_name" \
+        "${systemctl_user[@]}" show "$service_name" \
             --property=ControlGroup --value
     )"
     [[ "$cgroup" == /* ]] || fail "could not discover the bridge cgroup"

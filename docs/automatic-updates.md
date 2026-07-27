@@ -194,6 +194,19 @@ It may briefly disconnect UU when the final accepted update is applied; the
 same account state is reused when UU returns, so no sign-in prompt should be
 needed. Recent UU activity defers this interruption.
 
+An interactive operator can deliberately choose that interruption with:
+
+```bash
+uu-remote upgrade apply --now
+```
+
+This calls the same accepted promotion transaction and bypasses only the
+activity-idle delay. It cannot deploy a Codex draft, an unknown installer, an
+unaccepted manifest, or a mismatched hash. The complete prefix snapshot,
+login-state comparison, stability checks, XRDP-state check, and automatic
+rollback are unchanged. See the
+[reusable upgrade procedure](reusable-upgrade.md).
+
 ## Resuming Codex after interruption
 
 Each task stores these fields atomically with mode `0600`:

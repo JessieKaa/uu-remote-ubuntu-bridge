@@ -34,10 +34,37 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("ControlGroup", helper)
         self.assertIn("uuyc-cli.exe", helper)
         self.assertIn("WINEPREFIX", helper)
+        self.assertIn("DBUS_SESSION_BUS_ADDRESS=unix:path=", helper)
+        self.assertIn('"${systemctl_user[@]}" is-active', helper)
         self.assertIn("Do not commit", helper)
         self.assertNotRegex(helper, r"aeaw[a-z0-9]{8,}")
         self.assertIn('scripts/uu-agent" "$HOME/.local/bin/uu-agent"', installer)
         self.assertIn("scripts/uu-agent", digest)
+
+    def test_reusable_upgrader_is_installed_and_fail_closed(self):
+        upgrader = (
+            REPOSITORY / "scripts" / "upgrade-uu-remote.sh"
+        ).read_text()
+        installer = (REPOSITORY / "install.sh").read_text()
+        uninstaller = (REPOSITORY / "uninstall.sh").read_text()
+        command = (REPOSITORY / "scripts" / "uu-remote").read_text()
+        digest = (REPOSITORY / "scripts" / "runtime-source-digest").read_text()
+
+        self.assertIn("status --porcelain", upgrader)
+        self.assertIn("merge --ff-only", upgrader)
+        self.assertIn("updater_command promote-now", upgrader)
+        self.assertIn("--skip-account-login", upgrader)
+        self.assertIn("restore_runtime_backup", upgrader)
+        self.assertIn("run_live_check --allow-runtime-drift", upgrader)
+        self.assertIn("uu-agent", upgrader)
+        self.assertIn("uu-remote-upgrade", installer)
+        self.assertIn("uu-remote-upgrade", uninstaller)
+        self.assertIn("upgrade)", command)
+        self.assertIn("scripts/upgrade-uu-remote.sh", digest)
+
+        verifier = (REPOSITORY / "scripts" / "verify.sh").read_text()
+        self.assertIn("--allow-runtime-drift", verifier)
+        self.assertIn("installed runtime differs from pulled source", verifier)
 
     def test_xrdp_private_bus_relay_is_supervised(self):
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()

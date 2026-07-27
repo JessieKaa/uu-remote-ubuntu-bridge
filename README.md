@@ -227,6 +227,21 @@ the relay. Read the [v0.2.0 release notes](docs/releases/v0.2.0.md), use the
 and send the [copy-ready operator handoff](docs/update-handoff.md) when updating
 another authorized machine.
 
+For a maintained `main` checkout with automatic maintenance already
+configured, use the reusable guarded workflow:
+
+```bash
+uu-remote upgrade status
+uu-remote upgrade check
+uu-remote upgrade apply
+```
+
+An operator who deliberately accepts an immediate short UU disconnect can use
+`uu-remote upgrade apply --now`. That option bypasses only the activity-idle
+delay; binary acceptance, complete-prefix snapshot, login preservation,
+verification, and rollback remain mandatory. Read the
+[reusable upgrade procedure](docs/reusable-upgrade.md).
+
 Use an already downloaded installer or a future approved release manifest:
 
 ```bash
@@ -398,6 +413,7 @@ The RDP hop targets loopback and pins GNOME's certificate fingerprint.
 | `scripts/configure-updater.sh` | Install, select a behavior track, and remove maintenance timers |
 | `scripts/uu-remote-bridge` | Supervised UU/Xvfb/FreeRDP orchestration |
 | `scripts/uu-agent` | Runtime-discovered UU controller CLI and private-display diagnostics |
+| `scripts/upgrade-uu-remote.sh` | Fast-forward, guarded product promotion, runtime refresh, verification, and rollback |
 | `scripts/uu_connection_status.py` | Privacy-safe transport and key-watchdog diagnosis |
 | `scripts/configure-unattended.sh` | TPM-backed GDM autologin setup and rollback |
 | `scripts/uu-keyring-unlock.py` | Secret Service unlock before GNOME RDP |
@@ -416,6 +432,7 @@ ID, raw production log, screenshot, or private desktop content is committed.
 - [Update handoff for another operator](docs/update-handoff.md)
 - [Input behavior tracks](docs/release-tracks.md)
 - [Automatic checks and resumable repair](docs/automatic-updates.md)
+- [Reusable login-preserving upgrade](docs/reusable-upgrade.md)
 - [Automated repair agent handoff](docs/automated-repair-agent-handoff.md)
 - [UU controller CLI and remote agent](docs/controller-agent.md)
 - [Mobile-keyboard parity handoff](docs/mobile-keyboard-parity-handoff.md)

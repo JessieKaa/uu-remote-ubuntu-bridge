@@ -53,6 +53,14 @@ case "${1:-open}" in
         fi
         exec "$HOME/.local/bin/uu-remote-update" "$@"
         ;;
+    upgrade)
+        shift || true
+        if [[ ! -x "$HOME/.local/bin/uu-remote-upgrade" ]]; then
+            notify_error 'The reusable UU upgrader is not installed.'
+            exit 1
+        fi
+        exec "$HOME/.local/bin/uu-remote-upgrade" "$@"
+        ;;
     login)
         shift || true
         if [[ -z "${DISPLAY:-}" ]]; then
@@ -78,7 +86,7 @@ case "${1:-open}" in
         shift || true
         ;;
     *)
-        printf 'usage: uu-remote [open|login|status|network|restart|stop|logs|update]\n' >&2
+        printf 'usage: uu-remote [open|login|status|network|restart|stop|logs|update|upgrade]\n' >&2
         exit 2
         ;;
 esac

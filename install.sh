@@ -591,6 +591,8 @@ install -m 0755 "$repo_dir/scripts/uu-remote-bridge" \
     "$HOME/.local/bin/uu-remote-bridge"
 install -m 0755 "$repo_dir/scripts/uu-remote" "$HOME/.local/bin/uu-remote"
 install -m 0755 "$repo_dir/scripts/uu-agent" "$HOME/.local/bin/uu-agent"
+install -m 0755 "$repo_dir/scripts/upgrade-uu-remote.sh" \
+    "$HOME/.local/bin/uu-remote-upgrade"
 install -m 0755 "$repo_dir/scripts/stop-wine-prefix" \
     "$HOME/.local/libexec/uu-remote-stop-wine-prefix"
 install -m 0755 "$repo_dir/scripts/uu_connection_status.py" \

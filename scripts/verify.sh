@@ -38,6 +38,7 @@ runtime_digest_file="$wine_prefix/compat/.runtime-source-sha256"
 bridge_log="$wine_prefix/drive_c/users/$bridge_user/AppData/Local/Temp/uu-input-bridge.log"
 broker_log="$wine_prefix/drive_c/users/$bridge_user/Temp/uu-input-broker.log"
 stability_seconds=270
+allow_runtime_drift=false
 errors=0
 systemctl_user=(
     /usr/bin/env
@@ -55,6 +56,10 @@ while (($#)); do
             stability_seconds="${2:?--stability-seconds requires a number}"
             shift 2
             ;;
+        --allow-runtime-drift)
+            allow_runtime_drift=true
+            shift
+            ;;
         *)
             printf 'unknown verifier option: %s\n' "$1" >&2
             exit 2
@@ -62,7 +67,7 @@ while (($#)); do
     esac
 done
 if [[ ! "$stability_seconds" =~ ^[0-9]+$ ]]; then
-    printf 'usage: scripts/verify.sh [--quick|--stability-seconds N]\n' >&2
+    printf 'usage: scripts/verify.sh [--quick|--stability-seconds N] [--allow-runtime-drift]\n' >&2
     exit 2
 fi
 
@@ -96,6 +101,8 @@ expected_runtime_digest="$("$repo_dir/scripts/runtime-source-digest")"
 installed_runtime_digest="$(cat "$runtime_digest_file" 2>/dev/null || true)"
 if [[ "$installed_runtime_digest" == "$expected_runtime_digest" ]]; then
     pass 'installed runtime matches this source checkout'
+elif [[ "$allow_runtime_drift" == true ]]; then
+    printf 'INFO  installed runtime differs from pulled source and will be refreshed\n'
 else
     fail 'installed runtime is older or differs from this source checkout; reinstall it'
 fi

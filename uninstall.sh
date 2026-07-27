@@ -93,6 +93,8 @@ fi
 rm -f \
     "$HOME/.local/bin/uu-remote" \
     "$HOME/.local/bin/uu-remote-bridge" \
+    "$HOME/.local/bin/uu-remote-upgrade" \
+    "$HOME/.local/bin/uu-agent" \
     "$HOME/.local/libexec/uu-connection-status" \
     "$HOME/.local/libexec/uu-remote-stop-wine-prefix" \
     "$HOME/.local/bin/uu-keyring-unlock" \

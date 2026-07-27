@@ -21,6 +21,7 @@ runtime_files=(
     scripts/uu-agent
     scripts/uu-remote
     scripts/uu-remote-bridge
+    scripts/upgrade-uu-remote.sh
     scripts/verify.sh
     src/uu_injector.c
     src/uu_input_bridge.c

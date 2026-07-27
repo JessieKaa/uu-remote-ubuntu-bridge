@@ -206,6 +206,57 @@ class UpdateManagerTests(unittest.TestCase):
             )
             self.assertEqual("promotion-waiting-idle", retained["phase"])
 
+    def test_operator_promotion_can_explicitly_bypass_only_idle_gate(self) -> None:
+        class ManualManager(Manager):
+            def promotion_paths(self, task):
+                raise AssertionError("manual promotion passed the idle gate")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            home = root / "home"
+            log_dir = (
+                home
+                / ".local/share/wineprefixes/uu-remote/drive_c/Program Files"
+                / "Netease/GameViewer/log/server/log"
+            )
+            log_dir.mkdir(parents=True)
+            (log_dir / "log_current.txt").write_text(
+                "recent activity\n", encoding="utf-8"
+            )
+            config = replace(
+                self.config(root / "state"),
+                auto_promote_accepted_release=True,
+            )
+            manager = ManualManager(config)
+            task = {
+                "id": "approved-promotion-fixture",
+                "kind": "approved-promotion",
+                "phase": "promotion-queued",
+            }
+            with patch.object(Path, "home", return_value=home), self.assertRaisesRegex(
+                AssertionError, "manual promotion passed the idle gate"
+            ):
+                manager.run_promotion(task, ignore_idle=True)
+            retained = json.loads(
+                manager.pending_path.read_text(encoding="utf-8")
+            )
+            self.assertIn("operator_idle_override_at", retained)
+
+    def test_promote_now_rejects_non_promotion_tasks(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            manager = Manager(self.config(Path(temporary)))
+            manager.save_task(
+                {
+                    "id": "repair-fixture",
+                    "kind": "upstream-release",
+                    "phase": "queued",
+                }
+            )
+            with self.assertRaisesRegex(
+                Exception, "not an accepted UU promotion"
+            ):
+                manager.promote_now()
+
     def test_release_version_prefers_full_build_identifier(self) -> None:
         self.assertEqual(
             "4.32.200.8919",

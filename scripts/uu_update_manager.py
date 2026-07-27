@@ -1806,7 +1806,12 @@ class Manager:
         )
         return True
 
-    def run_promotion(self, task: dict[str, Any]) -> None:
+    def run_promotion(
+        self,
+        task: dict[str, Any],
+        *,
+        ignore_idle: bool = False,
+    ) -> None:
         if not self.config.auto_promote_accepted_release:
             task["phase"] = "promotion-held"
             self.save_task(task)
@@ -1829,7 +1834,7 @@ class Manager:
             if activity_dir.is_dir()
             else []
         )
-        if not activity_files:
+        if not activity_files and not ignore_idle:
             task["phase"] = "promotion-waiting-idle"
             self.save_task(task)
             self.write_status(
@@ -1847,7 +1852,7 @@ class Manager:
                 activity_mtimes.append(path.stat().st_mtime)
             except OSError:
                 continue
-        if not activity_mtimes:
+        if not activity_mtimes and not ignore_idle:
             task["phase"] = "promotion-waiting-idle"
             self.save_task(task)
             self.write_status(
@@ -1859,9 +1864,14 @@ class Manager:
                 ),
             )
             return
-        latest_activity = max(activity_mtimes)
-        quiet_seconds = max(0.0, time.time() - latest_activity)
-        required_quiet_seconds = self.config.idle_minutes * 60
+        quiet_seconds = (
+            max(0.0, time.time() - max(activity_mtimes))
+            if activity_mtimes
+            else 0.0
+        )
+        required_quiet_seconds = (
+            0 if ignore_idle else self.config.idle_minutes * 60
+        )
         if quiet_seconds < required_quiet_seconds:
             task["phase"] = "promotion-waiting-idle"
             task["quiet_seconds"] = int(quiet_seconds)
@@ -1876,6 +1886,9 @@ class Manager:
                 required_quiet_minutes=self.config.idle_minutes,
             )
             return
+        if ignore_idle:
+            task["operator_idle_override_at"] = utc_now()
+            self.save_task(task)
         task_dir, promotion_repo, helper, manifest, work_dir = self.promotion_paths(
             task
         )
@@ -1954,6 +1967,19 @@ class Manager:
                 "was restored and automatic retry is disabled"
             ),
         )
+
+    def promote_now(self) -> None:
+        if self.recover_interrupted_promotion():
+            return
+        task = self.load_pending()
+        if task is None:
+            raise UpdateError("there is no accepted UU promotion waiting")
+        if task.get("kind") != "approved-promotion":
+            raise UpdateError(
+                "the pending task is not an accepted UU promotion; "
+                "manual deployment remains forbidden"
+            )
+        self.run_promotion(task, ignore_idle=True)
 
     def codex_command(self, task: dict[str, Any], resume: bool) -> list[str]:
         repair_repo = Path(str(task["repair_repo"]))
@@ -2298,7 +2324,10 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path.home() / ".config/uu-remote-bridge/updater.json",
     )
-    parser.add_argument("command", choices=("check", "monitor", "retry", "status"))
+    parser.add_argument(
+        "command",
+        choices=("check", "monitor", "promote-now", "retry", "status"),
+    )
     return parser.parse_args()
 
 
@@ -2313,6 +2342,8 @@ def main() -> int:
         with manager.lock():
             if args.command == "check":
                 manager.check()
+            elif args.command == "promote-now":
+                manager.promote_now()
             elif args.command == "retry":
                 manager.retry_task()
             else:

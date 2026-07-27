@@ -46,6 +46,22 @@ cd ~/ProjectsLFS/uu-remote-ubuntu-bridge
 ./scripts/upgrade-uu-remote.sh apply --now
 ```
 
+## Current production gate
+
+As of 2026-07-27, the production prefix is back on the approved
+`4.33.0.8907` client. The guarded `4.34.0.8979` promotion completed its warm
+transaction and preserved login, XRDP, and the input profile, but a later
+stopped-prefix cold start exposed an accumulated Wine device-registry stall.
+The complete 4.33 prefix snapshot was restored, and the same stall then
+reproduced on 4.33.
+
+The 4.34 patch remains statically approved, but its promotion acceptance is
+withdrawn. Its manifest deliberately has no `acceptance` object, so
+`upgrade apply` cannot promote that release. Re-acceptance requires a clean
+stopped-prefix cold start, fresh signaling, real controller input, login
+preservation, and the normal stability interval. See
+[the withdrawn acceptance record](releases/4.34.0.8979-acceptance.md).
+
 ## Transaction order
 
 The script:
@@ -200,6 +216,15 @@ workstation. Both runtime checks passed, account state remained byte-for-byte
 usable, XRDP retained its active state and process, and the wrapper refreshed
 the bridge from the same pinned source. The saved input profile remained
 8 ms text pacing, 0 ms physical-key pacing, and direct X11 routing.
+
+That result is retained as historical evidence for the transaction machinery,
+not as current release acceptance. A later production cold start remained in
+`update_gvinput` before creating a signaling room. Prefix-local inspection
+found 527 failed virtual-input roots and 21,894 retained Wine Bluetooth device
+observations. Restoring 4.33 reproduced the scan; bounded registry cleanup
+reduced it to milliseconds and restored fresh signaling. Commit `1dd8ee2`
+made that cleanup idempotent and part of the cold-start boundary, while the
+4.34 acceptance record was withdrawn pending a complete retest.
 
 Installed commands live in `~/.local/bin`. Ensure that directory is in
 `PATH`; Ubuntu normally adds it from `~/.profile`. The source-tree command

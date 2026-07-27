@@ -194,6 +194,17 @@ ready record. It still validates every condition independently after the wait.
 This is a readiness correction, not a bypass: an absent relay or input helper
 still fails closed after the bounded 45-second window.
 
+With that correction committed as `eb5382e`, the same accepted
+`4.34.0.8979` installer completed the full transaction on the production
+workstation. Both runtime checks passed, account state remained byte-for-byte
+usable, XRDP retained its active state and process, and the wrapper refreshed
+the bridge from the same pinned source. The saved input profile remained
+8 ms text pacing, 0 ms physical-key pacing, and direct X11 routing.
+
+Installed commands live in `~/.local/bin`. Ensure that directory is in
+`PATH`; Ubuntu normally adds it from `~/.profile`. The source-tree command
+shown above remains available if a custom shell profile omits it.
+
 ## Reusing it on another computer
 
 Keep that computer's Wine prefix, updater state, keyring credential, and input

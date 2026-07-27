@@ -134,6 +134,9 @@ locked by the release manifest.
 
 - all 84 source, shell, documentation, updater, transaction, migration, and
   helper-build tests pass
+- production promotion from UU `4.33.0.8907` to `4.34.0.8979` passed both
+  runtime checks while preserving the account, direct-X11 input profile, and
+  the independently running XRDP process
 - the promotion fixture preserves an existing account through an in-place
   update, while deliberate registry damage restores the complete old prefix
 - source tests assert that promotion never starts, stops, restarts, or reloads

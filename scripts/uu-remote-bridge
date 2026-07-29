@@ -258,6 +258,46 @@ process_environment_value() {
         /usr/bin/sed -n "s/^${name}=//p" | /usr/bin/head -n 1
 }
 
+refresh_manager_environment() {
+    local environment
+    local value
+
+    environment="$(
+        "${systemctl_user[@]}" show-environment 2>/dev/null || true
+    )"
+
+    value="$(
+        printf '%s\n' "$environment" |
+            /usr/bin/sed -n 's/^DISPLAY=//p' |
+            /usr/bin/head -n 1
+    )"
+    manager_display="${value:-$manager_display}"
+    value="$(
+        printf '%s\n' "$environment" |
+            /usr/bin/sed -n 's/^WAYLAND_DISPLAY=//p' |
+            /usr/bin/head -n 1
+    )"
+    manager_wayland="${value:-$manager_wayland}"
+    value="$(
+        printf '%s\n' "$environment" |
+            /usr/bin/sed -n 's/^XDG_SESSION_TYPE=//p' |
+            /usr/bin/head -n 1
+    )"
+    manager_session_type="${value:-$manager_session_type}"
+    value="$(
+        printf '%s\n' "$environment" |
+            /usr/bin/sed -n 's/^XAUTHORITY=//p' |
+            /usr/bin/head -n 1
+    )"
+    manager_xauthority="${value:-$manager_xauthority}"
+    value="$(
+        printf '%s\n' "$environment" |
+            /usr/bin/sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p' |
+            /usr/bin/head -n 1
+    )"
+    manager_bus="${value:-$manager_bus}"
+}
+
 discover_desktop_session() {
     local candidate_bus
     local candidate_display
@@ -272,6 +312,10 @@ discover_desktop_session() {
     local fallback_wayland=""
     local fallback_xauthority=""
     local pid
+
+    # The user service can start before GDM imports the graphical session
+    # variables. Refresh them while waiting instead of caching the boot race.
+    refresh_manager_environment
 
     while read -r pid; do
         [[ -n "$pid" && -r "/proc/$pid/environ" ]] || continue

@@ -141,6 +141,15 @@ class RuntimeScriptTests(unittest.TestCase):
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
 
         self.assertIn('manager_wayland="${WAYLAND_DISPLAY:-}"', launcher)
+        self.assertIn("refresh_manager_environment()", launcher)
+        self.assertIn(
+            '"${systemctl_user[@]}" show-environment',
+            launcher,
+        )
+        self.assertLess(
+            launcher.index("refresh_manager_environment\n\n    while read"),
+            launcher.index('candidate_display="$(process_environment_value'),
+        )
         self.assertIn('"$candidate_bus" == "$manager_bus"', launcher)
         self.assertIn(
             'candidate_display="${candidate_display:-$manager_display}"',

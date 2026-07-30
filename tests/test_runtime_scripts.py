@@ -480,6 +480,13 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("ERROR_CONNECTION_ABORTED", broker)
         self.assertIn("release_pressed_keys", helper)
         self.assertIn("minimum_hold_ms", helper)
+        self.assertIn("XKeysymToKeycode", helper)
+        self.assertIn("extended_scan_to_keysym", helper)
+        self.assertIn("0xff52UL; /* XK_Up */", helper)
+        self.assertIn("0xff54UL; /* XK_Down */", helper)
+        self.assertIn("0xff51UL; /* XK_Left */", helper)
+        self.assertIn("0xff53UL; /* XK_Right */", helper)
+        self.assertNotIn("return 104; /* Down */", helper)
         self.assertNotIn("XTestFakeButtonEvent", helper)
 
         with tempfile.TemporaryDirectory() as temporary:

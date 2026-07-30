@@ -22,6 +22,24 @@ installer, for example:
   --grd-fd-restart-threshold 4096
 ```
 
+## UU cursor is visible but too small
+
+Keep the relay resolution and Wine DPI unchanged. The bridge defaults to
+`UURB_CURSOR_SIZE=auto`, which reads the physical GNOME Xcursor size and creates
+the same-sized process-local fallback cursor for UU's independent cursor
+channel. Restart the bridge after changing GNOME's pointer size.
+
+For a controller that still renders the cursor too small, set a fixed size:
+
+```bash
+sed -i 's/^UURB_CURSOR_SIZE=.*/UURB_CURSOR_SIZE=64/' \
+  ~/.config/uu-remote-bridge/environment
+systemctl --user restart uu-remote-bridge.service
+```
+
+Accepted values are `24` through `128`. This setting does not change XRDP, VNC,
+TeamViewer, the physical desktop resolution, or Wine's global DPI.
+
 ## Controller remains at “finding routes”
 
 This message can be misleading: the controller may be waiting for the host to

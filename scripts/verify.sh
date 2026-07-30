@@ -37,6 +37,9 @@ case "$release_version" in
         ;;
 esac
 freerdp="$wine_prefix/drive_c/Program Files/FreeRDP/sdl-freerdp.exe"
+cursor_guard="$wine_prefix/compat/uu-cursor-guard.dll"
+cursor_guard_log="$wine_prefix/drive_c/users/$bridge_user/Temp/uu-cursor-guard.log"
+cursor_reader_guard_log="$wine_prefix/drive_c/users/$bridge_user/AppData/Local/Temp/uu-cursor-guard.log"
 libei_backport="$wine_prefix/compat/libei/libei.so.1.2.1"
 network_filter="$wine_prefix/compat/uu-network-filter.so"
 x11_input_helper="$wine_prefix/compat/uu-x11-input"
@@ -213,6 +216,22 @@ if [[ -f "$freerdp" ]] && \
     pass 'pinned Windows FreeRDP SDL client is installed'
 else
     fail 'Windows FreeRDP SDL client verification failed'
+fi
+
+relay_pid="$(pgrep -n -u "$UID" -x 'sdl-freerdp.exe' || true)"
+cursor_server_pid="$(
+    pgrep -o -u "$UID" -f 'GameViewerServer\.exe' || true
+)"
+if [[ -f "$cursor_guard" && -n "$relay_pid" &&
+      -n "$cursor_server_pid" ]] &&
+   grep -Fq "$cursor_guard" "/proc/$relay_pid/maps" 2>/dev/null &&
+   grep -Fq "$cursor_guard" "/proc/$cursor_server_pid/maps" 2>/dev/null &&
+   grep -q 'UU relay cursor guard active' "$cursor_guard_log" 2>/dev/null &&
+   grep -q 'UU cursor reader guard active' \
+       "$cursor_reader_guard_log" 2>/dev/null; then
+    pass 'relay and UU cursor guards are active'
+else
+    fail 'relay or UU cursor guard is missing or inactive'
 fi
 
 if [[ -f "$bridge_log" ]] && \

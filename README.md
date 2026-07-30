@@ -87,15 +87,16 @@ official UU window on the logged-in desktop before starting the private relay.
 Complete account sign-in and close that window. Re-running the same command is
 idempotent; unchanged FreeRDP build outputs are checksum-verified and reused.
 
-Port, resolution, private-display, phone-text pacing, optional physical-key
-pacing, physical-key route, and an optional UU-only network-interface choice
-are persistent and can be set without editing the service:
+Port, resolution, private-display, cursor size, phone-text pacing, optional
+physical-key pacing, physical-key route, and an optional UU-only
+network-interface choice are persistent and can be set without editing the
+service:
 
 ```bash
 ./install.sh --rdp-port 3391 --resolution 2560x1440 --display auto \
   --text-key-delay-ms 8 --physical-key-delay-ms 0 \
   --keyboard-route rdp \
-  --network-interface all
+  --network-interface all --cursor-size auto
 ```
 
 They are validated and stored in
@@ -105,6 +106,12 @@ sessions. A later plain `./install.sh` preserves these choices.
 Requested ports and fixed displays are checked before use. A conflicting
 non-GNOME listener fails closed, and an installer error restarts a bridge that
 was active before the attempted upgrade.
+
+`--cursor-size auto` reads the physical desktop's Xcursor size before Wine
+starts, so UU's process-local fallback cursor follows GNOME scaling without
+changing Wine DPI or the shared desktop geometry. Use a fixed value such as
+`--cursor-size 64` only when the controller still renders the independent
+cursor channel too small.
 
 On the compatible `rdp` route, the default 8 ms text-key delay prevents UU's
 phone keyboard from overwhelming the Wine-to-FreeRDP input boundary. An

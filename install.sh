@@ -54,6 +54,7 @@ saved_text_key_delay_ms="$(saved_setting UURB_TEXT_KEY_DELAY_MS)"
 saved_physical_key_delay_ms="$(saved_setting UURB_PHYSICAL_KEY_DELAY_MS)"
 saved_keyboard_route="$(saved_setting UURB_KEYBOARD_ROUTE)"
 saved_network_interface="$(saved_setting UURB_NETWORK_INTERFACE)"
+saved_cursor_size="$(saved_setting UURB_CURSOR_SIZE)"
 rdp_port="${UURB_RDP_PORT:-${saved_rdp_port:-3390}}"
 resolution="${UURB_RESOLUTION:-${saved_resolution:-1920x1080}}"
 bridge_display="${UURB_DISPLAY:-${saved_display:-auto}}"
@@ -63,6 +64,7 @@ text_key_delay_ms="$(resolve_text_key_delay \
 physical_key_delay_ms="${UURB_PHYSICAL_KEY_DELAY_MS:-${saved_physical_key_delay_ms:-0}}"
 keyboard_route="${UURB_KEYBOARD_ROUTE:-${saved_keyboard_route:-rdp}}"
 network_interface="${UURB_NETWORK_INTERFACE:-${saved_network_interface:-all}}"
+cursor_size="${UURB_CURSOR_SIZE:-${saved_cursor_size:-auto}}"
 uu_installer=''
 skip_packages=false
 skip_account_login=false
@@ -98,6 +100,8 @@ usage: ./install.sh [options]
   --network-interface all|default|IFACE
                          use all adapters (the default), Ubuntu's preferred
                          route, or one named interface
+  --cursor-size auto|N   match the physical desktop cursor automatically, or
+                         use a fixed size from 24 through 128 pixels
   --skip-packages        do not install Ubuntu/Wine package dependencies
   --skip-account-login   do not open UU for first-time account sign-in
   --unattended           enable TPM-backed startup after an automatic login
@@ -151,6 +155,10 @@ while (($#)); do
             ;;
         --network-interface)
             network_interface="${2:?--network-interface requires all, default, or an interface name}"
+            shift 2
+            ;;
+        --cursor-size)
+            cursor_size="${2:?--cursor-size requires auto or a pixel size}"
             shift 2
             ;;
         --skip-packages)
@@ -268,6 +276,12 @@ if [[ "$network_interface" != all &&
       ! -d "/sys/class/net/$network_interface" ]]; then
     printf 'The requested UU network interface does not exist: %s\n' \
         "$network_interface" >&2
+    exit 2
+fi
+if [[ "$cursor_size" != auto ]] &&
+   { [[ ! "$cursor_size" =~ ^[0-9]+$ ]] ||
+     ((cursor_size < 24 || cursor_size > 128)); }; then
+    printf 'The cursor size must be auto or an integer from 24 through 128.\n' >&2
     exit 2
 fi
 if [[ "$upgrade_existing" == true && -z "$uu_installer" ]]; then
@@ -532,6 +546,7 @@ fi
 mkdir -p "$wine_prefix/compat" "$freerdp_install" "$libei_install"
 install -m 0644 "$release_manifest" "$installed_manifest"
 install -m 0755 \
+    "$compat_build/uu-cursor-guard.dll" \
     "$compat_build/uu-input-bridge.dll" \
     "$compat_build/uu-input-broker.exe" \
     "$compat_build/uu-injector.exe" \
@@ -622,6 +637,8 @@ printf 'UURB_KEYBOARD_ROUTE=%s\n' \
     "$keyboard_route" >>"$environment_tmp"
 printf 'UURB_NETWORK_INTERFACE=%s\n' \
     "$network_interface" >>"$environment_tmp"
+printf 'UURB_CURSOR_SIZE=%s\n' \
+    "$cursor_size" >>"$environment_tmp"
 chmod 0600 "$environment_tmp"
 mv "$environment_tmp" "$environment_file"
 install -m 0755 "$repo_dir/scripts/uu-remote-bridge" \

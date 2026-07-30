@@ -93,6 +93,8 @@ fi
 
 "${systemctl_user[@]}" disable --now uu-remote-bridge.service \
     >/dev/null 2>&1 || true
+"${systemctl_user[@]}" disable --now uu-remote-console.service \
+    >/dev/null 2>&1 || true
 if [[ -x "$repo_dir/scripts/configure-updater.sh" ]]; then
     if [[ "$purge" == true ]]; then
         "$repo_dir/scripts/configure-updater.sh" disable --purge-state
@@ -129,6 +131,7 @@ fi
 rm -f \
     "$HOME/.local/bin/uu-remote" \
     "$HOME/.local/bin/uu-remote-bridge" \
+    "$HOME/.local/bin/uu-remote-console" \
     "$HOME/.local/bin/uu-remote-upgrade" \
     "$HOME/.local/bin/uu-agent" \
     "$HOME/.local/libexec/uu-clean-wine-device-registry" \
@@ -137,7 +140,10 @@ rm -f \
     "$HOME/.local/libexec/uu-remote-stop-wine-prefix" \
     "$HOME/.local/bin/uu-keyring-unlock" \
     "$HOME/.config/systemd/user/uu-keyring-unlock.service" \
-    "$HOME/.config/systemd/user/uu-remote-bridge.service"
+    "$HOME/.config/systemd/user/uu-remote-bridge.service" \
+    "$HOME/.config/systemd/user/uu-remote-console.service" \
+    "$HOME/.local/share/applications/uu-remote.desktop" \
+    "$HOME/Desktop/UU Remote.desktop"
 rm -rf \
     "$HOME/.config/uu-remote-bridge" \
     "$wine_prefix/compat" \

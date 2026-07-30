@@ -56,6 +56,8 @@ saved_keyboard_route="$(saved_setting UURB_KEYBOARD_ROUTE)"
 saved_network_interface="$(saved_setting UURB_NETWORK_INTERFACE)"
 saved_cursor_guard="$(saved_setting UURB_CURSOR_GUARD)"
 saved_cursor_size="$(saved_setting UURB_CURSOR_SIZE)"
+saved_console_vnc_port="$(saved_setting UURB_CONSOLE_VNC_PORT)"
+saved_console_web_port="$(saved_setting UURB_CONSOLE_WEB_PORT)"
 rdp_port="${UURB_RDP_PORT:-${saved_rdp_port:-3390}}"
 resolution="${UURB_RESOLUTION:-${saved_resolution:-1920x1080}}"
 bridge_display="${UURB_DISPLAY:-${saved_display:-auto}}"
@@ -67,6 +69,8 @@ keyboard_route="${UURB_KEYBOARD_ROUTE:-${saved_keyboard_route:-rdp}}"
 network_interface="${UURB_NETWORK_INTERFACE:-${saved_network_interface:-all}}"
 cursor_guard="${UURB_CURSOR_GUARD:-${saved_cursor_guard:-off}}"
 cursor_size="${UURB_CURSOR_SIZE:-${saved_cursor_size:-auto}}"
+console_vnc_port="${UURB_CONSOLE_VNC_PORT:-${saved_console_vnc_port:-5920}}"
+console_web_port="${UURB_CONSOLE_WEB_PORT:-${saved_console_web_port:-6080}}"
 uu_installer=''
 skip_packages=false
 skip_account_login=false
@@ -106,6 +110,8 @@ usage: ./install.sh [options]
                          (default: off)
   --cursor-size auto|N   with the cursor guard on, match the desktop cursor or
                          use a fixed size from 24 through 128 pixels
+  --console-vnc-port N   localhost VNC sidecar port (default: 5920)
+  --console-web-port N   localhost noVNC app port (default: 6080)
   --skip-packages        do not install Ubuntu/Wine package dependencies
   --skip-account-login   do not open UU for first-time account sign-in
   --unattended           enable TPM-backed startup after an automatic login
@@ -167,6 +173,14 @@ while (($#)); do
             ;;
         --cursor-size)
             cursor_size="${2:?--cursor-size requires auto or a pixel size}"
+            shift 2
+            ;;
+        --console-vnc-port)
+            console_vnc_port="${2:?--console-vnc-port requires a port}"
+            shift 2
+            ;;
+        --console-web-port)
+            console_web_port="${2:?--console-web-port requires a port}"
             shift 2
             ;;
         --skip-packages)
@@ -301,6 +315,20 @@ if [[ "$cursor_size" != auto ]]; then
         exit 2
     fi
 fi
+if [[ ! "$console_vnc_port" =~ ^[1-9][0-9]{3,4}$ ||
+      ! "$console_web_port" =~ ^[1-9][0-9]{3,4}$ ]]; then
+    printf 'The UU console ports must be integers from 1024 through 65535.\n' >&2
+    exit 2
+fi
+console_vnc_port=$((10#$console_vnc_port))
+console_web_port=$((10#$console_web_port))
+if ((console_vnc_port < 1024 || console_vnc_port > 65535 ||
+     console_web_port < 1024 || console_web_port > 65535)) ||
+   ((console_vnc_port == console_web_port)); then
+    printf 'The UU console ports must be distinct values from 1024 through 65535.\n' \
+        >&2
+    exit 2
+fi
 if [[ "$upgrade_existing" == true && -z "$uu_installer" ]]; then
     printf -- '--upgrade-existing requires --uu-installer with an audited file.\n' >&2
     exit 2
@@ -364,9 +392,10 @@ install_packages() {
         gcc \
         gcc-mingw-w64-x86-64 \
         git gnome-remote-desktop iproute2 jq libsecret-tools libx11-6 \
-        libxml2-utils libxtst6 meson \
+        libxml2-utils libxtst6 meson novnc \
         ninja-build openbox openssl p7zip-full patch python3 python3-attr \
-        python3-gi python3-jinja2 tar x11-utils xauth xdotool xvfb zstd
+        python3-gi python3-jinja2 tar websockify x11-utils x11vnc xauth \
+        xdotool xvfb zstd
     install_winehq
 }
 
@@ -423,7 +452,8 @@ for command in curl meson ninja patch readelf sha256sum /usr/bin/systemctl \
     "$wine_bin" "$wineserver_bin" /usr/bin/Xvfb /usr/bin/gsettings \
     /usr/bin/awk /usr/bin/ip /usr/bin/mcookie /usr/bin/openbox \
     /usr/bin/sort /usr/bin/ss /usr/bin/xauth \
-    /usr/bin/xdotool /usr/libexec/gnome-remote-desktop-daemon; do
+    /usr/bin/websockify /usr/bin/x11vnc /usr/bin/xdotool \
+    /usr/libexec/gnome-remote-desktop-daemon; do
     if ! command -v "$command" >/dev/null 2>&1; then
         printf 'missing required command: %s\n' "$command" >&2
         exit 1
@@ -638,7 +668,7 @@ fi
 
 install -d -m 0755 \
     "$HOME/.local/bin" "$HOME/.local/libexec" \
-    "$HOME/.config/systemd/user"
+    "$HOME/.config/systemd/user" "$HOME/.local/share/applications"
 install -d -m 0700 "$config_dir"
 environment_tmp="$(mktemp "$config_dir/.environment.XXXXXX")"
 printf 'UURB_RDP_PORT=%s\n' "$rdp_port" >"$environment_tmp"
@@ -658,11 +688,17 @@ printf 'UURB_CURSOR_GUARD=%s\n' \
     "$cursor_guard" >>"$environment_tmp"
 printf 'UURB_CURSOR_SIZE=%s\n' \
     "$cursor_size" >>"$environment_tmp"
+printf 'UURB_CONSOLE_VNC_PORT=%s\n' \
+    "$console_vnc_port" >>"$environment_tmp"
+printf 'UURB_CONSOLE_WEB_PORT=%s\n' \
+    "$console_web_port" >>"$environment_tmp"
 chmod 0600 "$environment_tmp"
 mv "$environment_tmp" "$environment_file"
 install -m 0755 "$repo_dir/scripts/uu-remote-bridge" \
     "$HOME/.local/bin/uu-remote-bridge"
 install -m 0755 "$repo_dir/scripts/uu-remote" "$HOME/.local/bin/uu-remote"
+install -m 0755 "$repo_dir/scripts/uu-remote-console" \
+    "$HOME/.local/bin/uu-remote-console"
 install -m 0755 "$repo_dir/scripts/uu-agent" "$HOME/.local/bin/uu-agent"
 install -m 0755 "$repo_dir/scripts/upgrade-uu-remote.sh" \
     "$HOME/.local/bin/uu-remote-upgrade"
@@ -678,8 +714,37 @@ install -m 0755 "$repo_dir/scripts/uu-keyring-unlock.py" \
     "$HOME/.local/bin/uu-keyring-unlock"
 install -m 0644 "$repo_dir/systemd/uu-remote-bridge.service" \
     "$HOME/.config/systemd/user/uu-remote-bridge.service"
+install -m 0644 "$repo_dir/systemd/uu-remote-console.service" \
+    "$HOME/.config/systemd/user/uu-remote-console.service"
 install -m 0644 "$repo_dir/systemd/uu-keyring-unlock.service" \
     "$HOME/.config/systemd/user/uu-keyring-unlock.service"
+
+desktop_entry="$HOME/.local/share/applications/uu-remote.desktop"
+"$python_bin" - "$repo_dir/desktop/uu-remote.desktop.in" \
+    "$desktop_entry" "$HOME/.local/bin/uu-remote-console" <<'PY'
+import sys
+from pathlib import Path
+
+template, destination, executable = map(Path, sys.argv[1:])
+escaped = str(executable).replace("\\", "\\\\").replace(" ", "\\ ")
+rendered = template.read_text(encoding="ascii").replace(
+    "@EXEC@", f"{escaped} open"
+)
+destination.write_text(rendered, encoding="ascii")
+PY
+chmod 0644 "$desktop_entry"
+if [[ -d "$HOME/Desktop" ]]; then
+    desktop_shortcut="$HOME/Desktop/UU Remote.desktop"
+    install -m 0755 "$desktop_entry" "$desktop_shortcut"
+    if command -v gio >/dev/null 2>&1; then
+        gio set "$desktop_shortcut" metadata::trusted true \
+            >/dev/null 2>&1 || true
+    fi
+fi
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$HOME/.local/share/applications" \
+        >/dev/null 2>&1 || true
+fi
 
 tls_dir="$HOME/.local/share/gnome-remote-desktop"
 tls_cert="$tls_dir/rdp-tls.crt"
@@ -745,4 +810,6 @@ fi
 
 printf '\nInstalled UU Remote Ubuntu bridge.\n'
 printf 'Service: systemctl --user status uu-remote-bridge.service\n'
+printf 'App:     open "UU Remote" or run uu-remote open\n'
+printf 'Console: http://127.0.0.1:%s/vnc.html\n' "$console_web_port"
 printf 'Logs:    uu-remote logs\n'

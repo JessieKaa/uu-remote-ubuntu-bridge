@@ -33,6 +33,9 @@ locked by the release manifest.
 - an opt-in process-local cursor guard for hosts where hidden or
   cross-process-invalid Wine cursor handles break UU's independent cursor
   channel; existing hosts retain the unmodified path by default
+- an on-demand GNOME application that opens the existing private UU display
+  through a localhost-only noVNC sidecar instead of starting another Wine
+  client
 
 ### Security
 
@@ -47,6 +50,9 @@ locked by the release manifest.
 - require acceptance to be bound to both installer and patched-server hashes,
   wait for a quiet UU window, compare login/account state before opening UU,
   and keep XRDP outside every promotion action
+- bind the local UU console's VNC and WebSocket listeners exclusively to
+  loopback, disable x11vnc's implicit IPv6 listener, and discover only the
+  bridge-owned Xauthority file
 
 ### Documentation
 
@@ -146,7 +152,7 @@ locked by the release manifest.
 
 ### Validation
 
-- all 90 source, shell, documentation, updater, transaction, migration, and
+- all 91 source, shell, documentation, updater, transaction, migration, and
   helper-build tests pass
 - production promotion from UU `4.33.0.8907` to `4.34.0.8979` passed both
   runtime checks while preserving the account, direct-X11 input profile, and

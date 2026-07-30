@@ -120,6 +120,30 @@ value such as `--cursor-size 64` changes only the guard's fallback arrow; it
 does not change Wine DPI or desktop geometry. Disable the extension with
 `--cursor-guard off` if the host does not need it.
 
+### Local desktop app
+
+Open **UU Remote** from GNOME's application list or the desktop shortcut, or
+run:
+
+```bash
+uu-remote open
+```
+
+This opens the already-running private UU display in a dedicated Chrome app
+window through noVNC. It does not start a second Wine client or contend with
+the bridge prefix. The local endpoint is:
+
+```text
+http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale&reconnect=1
+```
+
+Both noVNC and its VNC backend listen on loopback only. The VNC side therefore
+uses no separate password and is not reachable from the LAN. While the local
+console is connected, the UU management window may remain in front; closing
+the console returns focus to `Ubuntu-Desktop-Relay`. Override occupied local
+ports during installation with `--console-web-port` and
+`--console-vnc-port`.
+
 On the compatible `rdp` route, the default 8 ms text-key delay prevents UU's
 phone keyboard from overwhelming the Wine-to-FreeRDP input boundary. An
 upgrade from `v0.1.0` preserves that release's unpaced behavior as `0`. The

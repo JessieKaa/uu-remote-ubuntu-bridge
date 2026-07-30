@@ -1,0 +1,378 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+environment_file="$HOME/.config/uu-remote-bridge/environment"
+bridge_runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$UID}/uu-remote-bridge"
+runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$UID}/uu-remote-console"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/uu-remote-console"
+bridge_xauthority_file="$bridge_runtime_dir/Xauthority"
+bridge_display_file="$bridge_runtime_dir/private-display"
+bridge_focus_file="$bridge_runtime_dir/console-focus"
+script_path="$(readlink -f "$0")"
+systemctl_user=(
+    /usr/bin/env
+    "DBUS_SESSION_BUS_ADDRESS=unix:path=${XDG_RUNTIME_DIR:-/run/user/$UID}/bus"
+    /usr/bin/systemctl --user
+)
+
+saved_setting() {
+    local name="$1"
+
+    [[ -f "$environment_file" ]] || return 0
+    /usr/bin/sed -n "s/^${name}=//p" "$environment_file" | \
+        /usr/bin/tail -n 1
+}
+
+saved_vnc_port="$(saved_setting UURB_CONSOLE_VNC_PORT)"
+saved_web_port="$(saved_setting UURB_CONSOLE_WEB_PORT)"
+vnc_port="${UURB_CONSOLE_VNC_PORT:-${saved_vnc_port:-5920}}"
+web_port="${UURB_CONSOLE_WEB_PORT:-${saved_web_port:-6080}}"
+novnc_root="${UURB_NOVNC_ROOT:-/usr/share/novnc}"
+console_url="http://127.0.0.1:$web_port/vnc.html?autoconnect=1&resize=scale&reconnect=1"
+bridge_display=""
+bridge_xauthority=""
+vnc_pid=""
+websockify_pid=""
+
+notify_error() {
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send 'UU Remote' "$1"
+    fi
+    printf '%s\n' "$1" >&2
+}
+
+valid_port() {
+    [[ "$1" =~ ^[1-9][0-9]{3,4}$ ]] &&
+        ((10#$1 >= 1024 && 10#$1 <= 65535))
+}
+
+if ! valid_port "$vnc_port" || ! valid_port "$web_port" ||
+   [[ "$vnc_port" == "$web_port" ]]; then
+    printf 'UU console ports must be distinct integers from 1024 through 65535.\n' \
+        >&2
+    exit 2
+fi
+vnc_port=$((10#$vnc_port))
+web_port=$((10#$web_port))
+
+display_ready() {
+    local display="$1"
+    local xauthority="$2"
+
+    [[ "$display" =~ ^:(0|[1-9][0-9]{0,2})$ ]] &&
+        [[ -r "$xauthority" ]] &&
+        /usr/bin/env DISPLAY="$display" XAUTHORITY="$xauthority" \
+            /usr/bin/xdpyinfo >/dev/null 2>&1
+}
+
+discover_bridge() {
+    local -a arguments=()
+    local auth=""
+    local candidate=""
+    local index
+    local pid
+
+    bridge_display=""
+    bridge_xauthority=""
+    if [[ -r "$bridge_display_file" ]]; then
+        read -r candidate <"$bridge_display_file" || true
+        if display_ready "$candidate" "$bridge_xauthority_file"; then
+            bridge_display="$candidate"
+            bridge_xauthority="$bridge_xauthority_file"
+            return 0
+        fi
+    fi
+
+    while read -r pid; do
+        [[ -r "/proc/$pid/cmdline" ]] || continue
+        arguments=()
+        if ! mapfile -d '' -t arguments <"/proc/$pid/cmdline"; then
+            continue
+        fi
+        candidate=""
+        auth=""
+        for ((index = 1; index < ${#arguments[@]}; index++)); do
+            if [[ "${arguments[index]}" =~ ^:(0|[1-9][0-9]{0,2})$ ]]; then
+                candidate="${arguments[index]}"
+            elif [[ "${arguments[index]}" == -auth &&
+                    $((index + 1)) -lt ${#arguments[@]} ]]; then
+                auth="${arguments[index + 1]}"
+                index=$((index + 1))
+            fi
+        done
+        if [[ "$auth" == "$bridge_xauthority_file" ]] &&
+           display_ready "$candidate" "$auth"; then
+            bridge_display="$candidate"
+            bridge_xauthority="$auth"
+            return 0
+        fi
+    done < <(/usr/bin/pgrep -u "$UID" -x Xvfb || true)
+    return 1
+}
+
+listener_present() {
+    /usr/bin/ss -H -ltn "sport = :$1" 2>/dev/null | \
+        /usr/bin/grep -q .
+}
+
+wait_for_bridge() {
+    for _ in {1..160}; do
+        if discover_bridge; then
+            return 0
+        fi
+        sleep 0.25
+    done
+    return 1
+}
+
+focus_client() {
+    local client_window=""
+
+    discover_bridge || return 1
+    /usr/bin/install -d -m 0700 "$bridge_runtime_dir"
+    printf '%s\n' "$$" >"$bridge_focus_file"
+    chmod 0600 "$bridge_focus_file"
+    client_window="$(
+        /usr/bin/env DISPLAY="$bridge_display" \
+            XAUTHORITY="$bridge_xauthority" \
+            /usr/bin/xdotool search --onlyvisible \
+                --class 'gameviewer.exe' 2>/dev/null | \
+            /usr/bin/tail -n 1
+    )"
+    if [[ -z "$client_window" ]]; then
+        client_window="$(
+            /usr/bin/env DISPLAY="$bridge_display" \
+                XAUTHORITY="$bridge_xauthority" \
+                /usr/bin/xdotool search --onlyvisible \
+                    --name 'UU' 2>/dev/null | \
+                /usr/bin/tail -n 1
+        )"
+    fi
+    if [[ -n "$client_window" ]]; then
+        /usr/bin/env DISPLAY="$bridge_display" \
+            XAUTHORITY="$bridge_xauthority" \
+            /usr/bin/xdotool windowmap "$client_window" \
+                windowactivate --sync "$client_window" >/dev/null 2>&1 || true
+    fi
+}
+
+release_client() {
+    local relay_window=""
+
+    rm -f "$bridge_focus_file"
+    discover_bridge || return 0
+    relay_window="$(
+        /usr/bin/env DISPLAY="$bridge_display" \
+            XAUTHORITY="$bridge_xauthority" \
+            /usr/bin/xdotool search --onlyvisible \
+                --name '^Ubuntu-Desktop-Relay$' 2>/dev/null | \
+            /usr/bin/tail -n 1
+    )"
+    if [[ -n "$relay_window" ]]; then
+        /usr/bin/env DISPLAY="$bridge_display" \
+            XAUTHORITY="$bridge_xauthority" \
+            /usr/bin/xdotool windowactivate "$relay_window" \
+                >/dev/null 2>&1 || true
+    fi
+}
+
+cleanup_server() {
+    local pid
+
+    trap - EXIT INT TERM HUP
+    for pid in "$websockify_pid" "$vnc_pid"; do
+        if [[ -n "$pid" ]]; then
+            kill "$pid" >/dev/null 2>&1 || true
+        fi
+    done
+    release_client || true
+    rm -f "$runtime_dir/url" "$runtime_dir/display"
+}
+
+serve_console() {
+    local command
+    local ready=false
+
+    for command in /usr/bin/curl /usr/bin/ss /usr/bin/websockify \
+        /usr/bin/x11vnc /usr/bin/xdotool /usr/bin/xdpyinfo; do
+        if [[ ! -x "$command" ]]; then
+            printf 'UU console dependency is missing: %s\n' "$command" >&2
+            return 1
+        fi
+    done
+    if [[ ! -f "$novnc_root/vnc.html" ]]; then
+        printf 'noVNC web assets are missing from %s.\n' "$novnc_root" >&2
+        return 1
+    fi
+    if ! wait_for_bridge; then
+        printf 'The UU private X display did not become ready.\n' >&2
+        return 1
+    fi
+    if listener_present "$vnc_port" || listener_present "$web_port"; then
+        printf 'UU console port %s or %s is already in use.\n' \
+            "$vnc_port" "$web_port" >&2
+        return 1
+    fi
+
+    /usr/bin/install -d -m 0700 "$runtime_dir" "$state_dir"
+    printf '%s\n' "$bridge_display" >"$runtime_dir/display"
+    printf '%s\n' "$console_url" >"$runtime_dir/url"
+    chmod 0600 "$runtime_dir/display" "$runtime_dir/url"
+    trap cleanup_server EXIT INT TERM HUP
+
+    /usr/bin/env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 \
+        /usr/bin/x11vnc \
+        -display "$bridge_display" \
+        -auth "$bridge_xauthority" \
+        -rfbport "$vnc_port" \
+        -localhost \
+        -no6 \
+        -nopw \
+        -forever \
+        -shared \
+        -quiet \
+        -afteraccept "$script_path focus-client" \
+        -gone "$script_path release-client" \
+        >>"$state_dir/x11vnc.log" 2>&1 &
+    vnc_pid=$!
+
+    for _ in {1..80}; do
+        if listener_present "$vnc_port" &&
+           kill -0 "$vnc_pid" >/dev/null 2>&1; then
+            ready=true
+            break
+        fi
+        kill -0 "$vnc_pid" >/dev/null 2>&1 || break
+        sleep 0.1
+    done
+    if [[ "$ready" != true ]]; then
+        printf 'x11vnc did not expose the UU private display.\n' >&2
+        return 1
+    fi
+
+    /usr/bin/websockify --web="$novnc_root" \
+        "127.0.0.1:$web_port" "127.0.0.1:$vnc_port" \
+        >>"$state_dir/websockify.log" 2>&1 &
+    websockify_pid=$!
+    ready=false
+    for _ in {1..80}; do
+        if /usr/bin/curl --fail --silent --show-error \
+            "http://127.0.0.1:$web_port/vnc.html" >/dev/null 2>&1 &&
+           kill -0 "$websockify_pid" >/dev/null 2>&1; then
+            ready=true
+            break
+        fi
+        kill -0 "$websockify_pid" >/dev/null 2>&1 || break
+        sleep 0.1
+    done
+    if [[ "$ready" != true ]]; then
+        printf 'The UU noVNC endpoint did not become ready.\n' >&2
+        return 1
+    fi
+
+    printf 'UU Remote console: %s (display %s)\n' \
+        "$console_url" "$bridge_display"
+    set +e
+    wait -n "$vnc_pid" "$websockify_pid"
+    set -e
+    return 1
+}
+
+launch_browser() {
+    local profile="$HOME/.local/share/uu-remote-console/chrome-profile"
+
+    /usr/bin/install -d -m 0700 "$profile"
+    if [[ -x /usr/bin/google-chrome ]]; then
+        exec /usr/bin/google-chrome \
+            --app="$console_url" \
+            --class=uu-remote-console \
+            --user-data-dir="$profile" \
+            --no-first-run \
+            --no-default-browser-check \
+            --disable-sync
+    elif [[ -x /snap/bin/chromium ]]; then
+        exec /snap/bin/chromium \
+            --app="$console_url" \
+            --class=uu-remote-console \
+            --user-data-dir="$profile" \
+            --no-first-run \
+            --no-default-browser-check \
+            --disable-sync
+    fi
+    exec /usr/bin/xdg-open "$console_url"
+}
+
+open_console() {
+    local bridge_process=false
+    local ready=false
+
+    if ! discover_bridge; then
+        if /usr/bin/pgrep -u "$UID" -f \
+            '(^|/)uu-remote-bridge($|[[:space:]])' >/dev/null; then
+            bridge_process=true
+        fi
+        if [[ "$bridge_process" == false ]]; then
+            "${systemctl_user[@]}" start uu-remote-bridge.service || {
+                notify_error 'The Ubuntu desktop bridge could not start.'
+                return 1
+            }
+        fi
+    fi
+
+    "${systemctl_user[@]}" reset-failed uu-remote-console.service \
+        >/dev/null 2>&1 || true
+    if ! "${systemctl_user[@]}" start uu-remote-console.service; then
+        notify_error 'The local UU Remote console could not start.'
+        return 1
+    fi
+    for _ in {1..160}; do
+        if /usr/bin/curl --fail --silent \
+            "http://127.0.0.1:$web_port/vnc.html" >/dev/null 2>&1; then
+            ready=true
+            break
+        fi
+        sleep 0.1
+    done
+    if [[ "$ready" != true ]]; then
+        notify_error 'The local UU Remote console did not become ready.'
+        return 1
+    fi
+    launch_browser
+}
+
+case "${1:-open}" in
+    open)
+        open_console
+        ;;
+    serve)
+        serve_console
+        ;;
+    status)
+        printf 'URL: %s\n' "$console_url"
+        printf 'Service: %s\n' \
+            "$("${systemctl_user[@]}" is-active uu-remote-console.service \
+                2>/dev/null || true)"
+        if discover_bridge; then
+            printf 'Bridge display: %s\n' "$bridge_display"
+        else
+            printf 'Bridge display: unavailable\n'
+        fi
+        ;;
+    stop)
+        exec "${systemctl_user[@]}" stop uu-remote-console.service
+        ;;
+    url)
+        printf '%s\n' "$console_url"
+        ;;
+    focus-client)
+        focus_client
+        ;;
+    release-client)
+        release_client
+        ;;
+    *)
+        printf 'usage: uu-remote-console [open|status|stop|url]\n' >&2
+        exit 2
+        ;;
+esac

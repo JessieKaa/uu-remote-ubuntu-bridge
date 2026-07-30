@@ -227,6 +227,62 @@ class RuntimeScriptTests(unittest.TestCase):
             installer.index('stop uu-remote-bridge.service'),
         )
 
+    def test_local_console_is_on_demand_loopback_only_and_desktop_launchable(self):
+        console = (REPOSITORY / "scripts" / "uu-remote-console").read_text()
+        command = (REPOSITORY / "scripts" / "uu-remote").read_text()
+        launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
+        installer = (REPOSITORY / "install.sh").read_text()
+        uninstaller = (REPOSITORY / "uninstall.sh").read_text()
+        unit = (
+            REPOSITORY / "systemd" / "uu-remote-console.service"
+        ).read_text()
+        desktop = (
+            REPOSITORY / "desktop" / "uu-remote.desktop.in"
+        ).read_text()
+        digest = (REPOSITORY / "scripts" / "runtime-source-digest").read_text()
+
+        self.assertIn('"127.0.0.1:$web_port"', console)
+        self.assertIn('"127.0.0.1:$vnc_port"', console)
+        self.assertIn("-localhost", console)
+        self.assertIn("-no6", console)
+        self.assertIn("-nopw", console)
+        self.assertIn("-u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11", console)
+        self.assertNotIn("0.0.0.0", console)
+        self.assertIn("bridge_xauthority_file", console)
+        self.assertIn("private-display", console)
+        self.assertIn("uu-remote-console.service", installer)
+        self.assertIn("novnc", installer)
+        self.assertIn("websockify", installer)
+        self.assertIn("x11vnc", installer)
+        self.assertIn("uu-remote-console.service", uninstaller)
+        self.assertIn("ExecStart=%h/.local/bin/uu-remote-console serve", unit)
+        self.assertIn("NoNewPrivileges=yes", unit)
+        self.assertIn("Exec=@EXEC@", desktop)
+        self.assertIn("StartupWMClass=uu-remote-console", desktop)
+        self.assertIn('exec "$console_bin" open "$@"', command)
+        self.assertIn('console_focus_file="$runtime_dir/console-focus"', launcher)
+        self.assertIn('[[ ! -e "$console_focus_file"', launcher)
+        self.assertIn("scripts/uu-remote-console", digest)
+        self.assertIn("systemd/uu-remote-console.service", digest)
+        self.assertIn("desktop/uu-remote.desktop.in", digest)
+
+        environment = os.environ | {
+            "UURB_CONSOLE_VNC_PORT": "5926",
+            "UURB_CONSOLE_WEB_PORT": "6086",
+        }
+        result = subprocess.run(
+            [str(REPOSITORY / "scripts" / "uu-remote-console"), "url"],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        self.assertEqual(
+            result.stdout.strip(),
+            "http://127.0.0.1:6086/vnc.html"
+            "?autoconnect=1&resize=scale&reconnect=1",
+        )
+
     def test_missing_or_uninjectable_uu_server_restarts_bridge(self):
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
 

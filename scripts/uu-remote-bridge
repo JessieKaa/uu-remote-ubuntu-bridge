@@ -118,6 +118,8 @@ service_control_exe="$compat_dir/uu-service-control.exe"
 uu_app_dir="$WINEPREFIX/drive_c/Program Files/Netease/GameViewer"
 xauth_file="$runtime_dir/Xauthority"
 x11_input_ready_file="$runtime_dir/x11-input.port"
+private_display_file="$runtime_dir/private-display"
+console_focus_file="$runtime_dir/console-focus"
 wine_stop_bin="$HOME/.local/libexec/uu-remote-stop-wine-prefix"
 
 if [[ ! -x "$libei_dir/libei.so.1.2.1" ||
@@ -305,7 +307,11 @@ cleanup() {
             >/dev/null 2>&1 || true
     fi
 
-    rm -f "$xauth_file" "$x11_input_ready_file"
+    rm -f \
+        "$xauth_file" \
+        "$x11_input_ready_file" \
+        "$private_display_file" \
+        "$console_focus_file"
 }
 
 trap cleanup EXIT
@@ -622,6 +628,10 @@ if [[ "$x_ready" != true ]]; then
     log 'The private X11 display did not become ready.'
     exit 1
 fi
+private_display_tmp="$private_display_file.$$"
+printf '%s\n' "$DISPLAY" >"$private_display_tmp"
+chmod 0600 "$private_display_tmp"
+mv "$private_display_tmp" "$private_display_file"
 
 /usr/bin/openbox >>"$state_dir/openbox.log" 2>&1 &
 openbox_pid=$!
@@ -909,7 +919,8 @@ supervise_server() {
             active_window_id="$(
                 /usr/bin/xdotool getactivewindow 2>/dev/null || true
             )"
-            if [[ -n "$active_window_id" && \
+            if [[ ! -e "$console_focus_file" && \
+                  -n "$active_window_id" && \
                   "$active_window_id" != "$relay_window_id" ]]; then
                 /usr/bin/xdotool windowactivate "$relay_window_id" \
                     >/dev/null 2>&1 || true

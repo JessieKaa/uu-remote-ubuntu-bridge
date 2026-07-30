@@ -33,9 +33,11 @@ locked by the release manifest.
 - an opt-in process-local cursor guard for hosts where hidden or
   cross-process-invalid Wine cursor handles break UU's independent cursor
   channel; existing hosts retain the unmodified path by default
-- an on-demand GNOME application that opens the existing private UU display
-  through a localhost-only noVNC sidecar instead of starting another Wine
-  client
+- a native GNOME launcher for the installed Wine application: the bridge keeps
+  UU's single client on the physical display while its server and RDP relay
+  stay on the private display
+- an explicit `uu-remote console` command for the localhost-only noVNC
+  diagnostic view
 
 ### Security
 

@@ -129,19 +129,23 @@ run:
 uu-remote open
 ```
 
-This opens the already-running private UU display in a dedicated Chrome app
-window through noVNC. It does not start a second Wine client or contend with
-the bridge prefix. The local endpoint is:
+This reveals the installed Wine application itself on the physical desktop.
+The bridge owns one UU client process and keeps it minimized until requested;
+the host server and `Ubuntu-Desktop-Relay` remain on the private X display.
+The launcher therefore opens neither a recursive desktop mirror nor a second
+Wine prefix.
 
-```text
-http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale&reconnect=1
+The localhost-only noVNC view remains available for bridge diagnostics:
+
+```bash
+uu-remote console
 ```
 
-Both noVNC and its VNC backend listen on loopback only. The VNC side therefore
-uses no separate password and is not reachable from the LAN. While the local
-console is connected, the UU management window may remain in front; closing
-the console returns focus to `Ubuntu-Desktop-Relay`. Override occupied local
-ports during installation with `--console-web-port` and
+Its endpoint is
+`http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale&reconnect=1`.
+Both noVNC and its VNC backend listen on loopback only, so the VNC side needs
+no separate password and is not reachable from the LAN. Override occupied
+local ports during installation with `--console-web-port` and
 `--console-vnc-port`.
 
 On the compatible `rdp` route, the default 8 ms text-key delay prevents UU's

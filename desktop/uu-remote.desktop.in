@@ -2,12 +2,12 @@
 Type=Application
 Version=1.0
 Name=UU Remote
-GenericName=Remote Desktop Console
-Comment=Open the local UU Remote bridge console
+GenericName=Remote Desktop
+Comment=Open the installed UU Remote application
 Exec=@EXEC@
 Icon=024B_GameViewer.0
 Terminal=false
 Categories=Network;RemoteAccess;
 StartupNotify=true
-StartupWMClass=uu-remote-console
-Keywords=UU;Remote;Desktop;noVNC;
+StartupWMClass=gameviewer.exe
+Keywords=UU;Remote;Desktop;

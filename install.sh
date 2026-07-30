@@ -721,7 +721,7 @@ install -m 0644 "$repo_dir/systemd/uu-keyring-unlock.service" \
 
 desktop_entry="$HOME/.local/share/applications/uu-remote.desktop"
 "$python_bin" - "$repo_dir/desktop/uu-remote.desktop.in" \
-    "$desktop_entry" "$HOME/.local/bin/uu-remote-console" <<'PY'
+    "$desktop_entry" "$HOME/.local/bin/uu-remote" <<'PY'
 import sys
 from pathlib import Path
 

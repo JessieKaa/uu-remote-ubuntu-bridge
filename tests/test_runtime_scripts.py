@@ -227,7 +227,7 @@ class RuntimeScriptTests(unittest.TestCase):
             installer.index('stop uu-remote-bridge.service'),
         )
 
-    def test_local_console_is_on_demand_loopback_only_and_desktop_launchable(self):
+    def test_native_app_is_default_and_console_remains_loopback_only(self):
         console = (REPOSITORY / "scripts" / "uu-remote-console").read_text()
         command = (REPOSITORY / "scripts" / "uu-remote").read_text()
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
@@ -258,8 +258,16 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("ExecStart=%h/.local/bin/uu-remote-console serve", unit)
         self.assertIn("NoNewPrivileges=yes", unit)
         self.assertIn("Exec=@EXEC@", desktop)
-        self.assertIn("StartupWMClass=uu-remote-console", desktop)
+        self.assertIn("StartupWMClass=gameviewer.exe", desktop)
+        self.assertNotIn("noVNC", desktop)
+        self.assertIn('"$desktop_entry" "$HOME/.local/bin/uu-remote"', installer)
+        self.assertIn("activate_physical_client", command)
+        self.assertIn('client_request_file="$bridge_runtime_dir/open-client"', command)
         self.assertIn('exec "$console_bin" open "$@"', command)
+        self.assertIn('"DISPLAY=$desktop_display"', launcher)
+        self.assertIn('client_request_file="$runtime_dir/open-client"', launcher)
+        self.assertIn("bootstrap_account hide", launcher)
+        self.assertIn("bootstrap_account show", launcher)
         self.assertIn('console_focus_file="$runtime_dir/console-focus"', launcher)
         self.assertIn('[[ ! -e "$console_focus_file"', launcher)
         self.assertIn("scripts/uu-remote-console", digest)
@@ -515,7 +523,7 @@ class RuntimeScriptTests(unittest.TestCase):
         reader_injection = launcher.index(
             '"$cursor_guard_windows_path" GameViewerServer.exe'
         )
-        bootstrap = launcher.index("\nbootstrap_account\n", injection)
+        bootstrap = launcher.index("\nbootstrap_account hide\n", injection)
         self.assertLess(reader_injection, injection)
         self.assertLess(injection, bootstrap)
         self.assertIn("pgrep -n -u \"$UID\" -x 'sdl-freerdp.exe'", verifier)

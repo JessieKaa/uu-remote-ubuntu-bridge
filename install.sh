@@ -54,6 +54,7 @@ saved_text_key_delay_ms="$(saved_setting UURB_TEXT_KEY_DELAY_MS)"
 saved_physical_key_delay_ms="$(saved_setting UURB_PHYSICAL_KEY_DELAY_MS)"
 saved_keyboard_route="$(saved_setting UURB_KEYBOARD_ROUTE)"
 saved_network_interface="$(saved_setting UURB_NETWORK_INTERFACE)"
+saved_cursor_guard="$(saved_setting UURB_CURSOR_GUARD)"
 saved_cursor_size="$(saved_setting UURB_CURSOR_SIZE)"
 rdp_port="${UURB_RDP_PORT:-${saved_rdp_port:-3390}}"
 resolution="${UURB_RESOLUTION:-${saved_resolution:-1920x1080}}"
@@ -64,6 +65,7 @@ text_key_delay_ms="$(resolve_text_key_delay \
 physical_key_delay_ms="${UURB_PHYSICAL_KEY_DELAY_MS:-${saved_physical_key_delay_ms:-0}}"
 keyboard_route="${UURB_KEYBOARD_ROUTE:-${saved_keyboard_route:-rdp}}"
 network_interface="${UURB_NETWORK_INTERFACE:-${saved_network_interface:-all}}"
+cursor_guard="${UURB_CURSOR_GUARD:-${saved_cursor_guard:-off}}"
 cursor_size="${UURB_CURSOR_SIZE:-${saved_cursor_size:-auto}}"
 uu_installer=''
 skip_packages=false
@@ -100,7 +102,9 @@ usage: ./install.sh [options]
   --network-interface all|default|IFACE
                          use all adapters (the default), Ubuntu's preferred
                          route, or one named interface
-  --cursor-size auto|N   match the physical desktop cursor automatically, or
+  --cursor-guard off|on  opt into the process-local UU cursor workaround
+                         (default: off)
+  --cursor-size auto|N   with the cursor guard on, match the desktop cursor or
                          use a fixed size from 24 through 128 pixels
   --skip-packages        do not install Ubuntu/Wine package dependencies
   --skip-account-login   do not open UU for first-time account sign-in
@@ -155,6 +159,10 @@ while (($#)); do
             ;;
         --network-interface)
             network_interface="${2:?--network-interface requires all, default, or an interface name}"
+            shift 2
+            ;;
+        --cursor-guard)
+            cursor_guard="${2:?--cursor-guard requires off or on}"
             shift 2
             ;;
         --cursor-size)
@@ -278,11 +286,20 @@ if [[ "$network_interface" != all &&
         "$network_interface" >&2
     exit 2
 fi
-if [[ "$cursor_size" != auto ]] &&
-   { [[ ! "$cursor_size" =~ ^[0-9]+$ ]] ||
-     ((cursor_size < 24 || cursor_size > 128)); }; then
-    printf 'The cursor size must be auto or an integer from 24 through 128.\n' >&2
+if [[ "$cursor_guard" != off && "$cursor_guard" != on ]]; then
+    printf 'The cursor guard must be off or on.\n' >&2
     exit 2
+fi
+if [[ "$cursor_size" != auto ]]; then
+    if [[ ! "$cursor_size" =~ ^[0-9]{1,3}$ ]]; then
+        printf 'The cursor size must be auto or an integer from 24 through 128.\n' >&2
+        exit 2
+    fi
+    cursor_size=$((10#$cursor_size))
+    if ((cursor_size < 24 || cursor_size > 128)); then
+        printf 'The cursor size must be auto or an integer from 24 through 128.\n' >&2
+        exit 2
+    fi
 fi
 if [[ "$upgrade_existing" == true && -z "$uu_installer" ]]; then
     printf -- '--upgrade-existing requires --uu-installer with an audited file.\n' >&2
@@ -637,6 +654,8 @@ printf 'UURB_KEYBOARD_ROUTE=%s\n' \
     "$keyboard_route" >>"$environment_tmp"
 printf 'UURB_NETWORK_INTERFACE=%s\n' \
     "$network_interface" >>"$environment_tmp"
+printf 'UURB_CURSOR_GUARD=%s\n' \
+    "$cursor_guard" >>"$environment_tmp"
 printf 'UURB_CURSOR_SIZE=%s\n' \
     "$cursor_size" >>"$environment_tmp"
 chmod 0600 "$environment_tmp"

@@ -22,22 +22,29 @@ installer, for example:
   --grd-fd-restart-threshold 4096
 ```
 
-## UU cursor is visible but too small
+## UU cursor is missing or too small
 
-Keep the relay resolution and Wine DPI unchanged. The bridge defaults to
-`UURB_CURSOR_SIZE=auto`, which reads the physical GNOME Xcursor size and creates
-the same-sized process-local fallback cursor for UU's independent cursor
-channel. Restart the bridge after changing GNOME's pointer size.
-
-For a controller that still renders the cursor too small, set a fixed size:
+Keep the relay resolution and Wine DPI unchanged. The process-local cursor
+guard is an opt-in compatibility extension, so hosts with a working cursor do
+not load it. Enable it when the controller loses the cursor, renders it too
+small, or the UU server records `ERROR_INVALID_CURSOR_HANDLE`:
 
 ```bash
-sed -i 's/^UURB_CURSOR_SIZE=.*/UURB_CURSOR_SIZE=64/' \
-  ~/.config/uu-remote-bridge/environment
-systemctl --user restart uu-remote-bridge.service
+./install.sh --skip-packages --skip-account-login \
+  --cursor-guard on --cursor-size auto
 ```
 
-Accepted values are `24` through `128`. This setting does not change XRDP, VNC,
+`auto` reads the physical GNOME Xcursor size and creates the same-sized
+fallback arrow for UU's independent cursor channel. For a controller that
+still renders the cursor too small, use a fixed size:
+
+```bash
+./install.sh --skip-packages --skip-account-login \
+  --cursor-guard on --cursor-size 64
+```
+
+Accepted values are `24` through `128`. Disable the extension with
+`--cursor-guard off` when it is unnecessary. It does not change XRDP, VNC,
 TeamViewer, the physical desktop resolution, or Wine's global DPI.
 
 ## Controller remains at “finding routes”

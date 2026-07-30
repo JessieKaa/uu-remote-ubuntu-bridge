@@ -87,16 +87,15 @@ official UU window on the logged-in desktop before starting the private relay.
 Complete account sign-in and close that window. Re-running the same command is
 idempotent; unchanged FreeRDP build outputs are checksum-verified and reused.
 
-Port, resolution, private-display, cursor size, phone-text pacing, optional
-physical-key pacing, physical-key route, and an optional UU-only
-network-interface choice are persistent and can be set without editing the
-service:
+Port, resolution, private-display, phone-text pacing, optional physical-key
+pacing, physical-key route, and an optional UU-only network-interface choice
+are persistent and can be set without editing the service:
 
 ```bash
 ./install.sh --rdp-port 3391 --resolution 2560x1440 --display auto \
   --text-key-delay-ms 8 --physical-key-delay-ms 0 \
   --keyboard-route rdp \
-  --network-interface all --cursor-size auto
+  --network-interface all
 ```
 
 They are validated and stored in
@@ -107,11 +106,19 @@ Requested ports and fixed displays are checked before use. A conflicting
 non-GNOME listener fails closed, and an installer error restarts a bridge that
 was active before the attempted upgrade.
 
-`--cursor-size auto` reads the physical desktop's Xcursor size before Wine
-starts, so UU's process-local fallback cursor follows GNOME scaling without
-changing Wine DPI or the shared desktop geometry. Use a fixed value such as
-`--cursor-size 64` only when the controller still renders the independent
-cursor channel too small.
+The process-local cursor guard is a host-specific extension and defaults to
+`off`. Enable it only when the controller loses the cursor, renders it too
+small, or the UU server reports an invalid cross-process cursor handle:
+
+```bash
+./install.sh --skip-packages --skip-account-login \
+  --cursor-guard on --cursor-size auto
+```
+
+`auto` reads the physical desktop's Xcursor size before Wine starts. A fixed
+value such as `--cursor-size 64` changes only the guard's fallback arrow; it
+does not change Wine DPI or desktop geometry. Disable the extension with
+`--cursor-guard off` if the host does not need it.
 
 On the compatible `rdp` route, the default 8 ms text-key delay prevents UU's
 phone keyboard from overwhelming the Wine-to-FreeRDP input boundary. An
@@ -146,7 +153,9 @@ fails explicitly rather than becoming an unrelated key. The global default
 remains `rdp`; `auto` selects the direct route only for an X11 target. If
 preflight cannot verify the target display or helper before injection, the
 request safely uses the compatible RDP route. No event is replayed after an
-ambiguous partial injection.
+ambiguous partial injection. Extended navigation keys are resolved from
+keysyms on the active display rather than a fixed X11 keycode table, so the
+mapping follows the host layout.
 
 On the validated XRDP workstation, the first live direct-UU run produced 256
 content-free sampled physical-key calls on `route=x11`; every sampled call

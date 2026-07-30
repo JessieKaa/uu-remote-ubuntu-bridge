@@ -34,19 +34,32 @@ static void write_log(const char *message)
     WriteFile(log_file, message, (DWORD)strlen(message), &written, NULL);
 }
 
-static void open_log(void)
+static void default_log_path(wchar_t *path)
 {
-    wchar_t path[MAX_PATH];
     DWORD length;
 
-    length = GetEnvironmentVariableW(L"UURB_CURSOR_GUARD_LOG", path, MAX_PATH);
-    if (length == 0 || length >= MAX_PATH) {
-        length = GetTempPathW(MAX_PATH, path);
-        if (length == 0 || length >= MAX_PATH - 20)
-            lstrcpynW(path, L"uu-cursor-guard.log", MAX_PATH);
-        else
-            lstrcatW(path, L"uu-cursor-guard.log");
-    }
+    length = GetTempPathW(MAX_PATH, path);
+    if (length == 0 || length >= MAX_PATH - 20)
+        lstrcpynW(path, L"uu-cursor-guard.log", MAX_PATH);
+    else
+        lstrcatW(path, L"uu-cursor-guard.log");
+}
+
+static void open_log(const wchar_t *process_name)
+{
+    wchar_t path[MAX_PATH];
+    DWORD length = 0;
+
+    /*
+     * Wine services do not reliably inherit the bridge environment. Keep the
+     * server guard on its process-local temp path even when launch order
+     * changes; the relay guard uses the explicit bridge log path.
+     */
+    if (_wcsicmp(process_name, L"GameViewerServer.exe") != 0)
+        length = GetEnvironmentVariableW(
+            L"UURB_CURSOR_GUARD_LOG", path, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH)
+        default_log_path(path);
 
     log_file = CreateFileW(path, FILE_APPEND_DATA,
                            FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
@@ -300,17 +313,18 @@ static DWORD WINAPI initialize_guard(void *unused)
     BOOL streamer_icon_info_patched;
 
     (void)unused;
-    open_log();
-    if (GetModuleFileNameW(NULL, executable, MAX_PATH) == 0 ||
-        !load_fallback_cursor()) {
+    if (GetModuleFileNameW(NULL, executable, MAX_PATH) == 0)
+        return 1;
+    separator = wcsrchr(executable, L'\\');
+    process_name = separator == NULL ? executable : separator + 1;
+    open_log(process_name);
+    if (!load_fallback_cursor()) {
         write_log("UU cursor guard initialization failed\r\n");
         if (log_file != INVALID_HANDLE_VALUE)
             FlushFileBuffers(log_file);
         return 1;
     }
 
-    separator = wcsrchr(executable, L'\\');
-    process_name = separator == NULL ? executable : separator + 1;
     main_module = GetModuleHandleW(NULL);
     if (_wcsicmp(process_name, L"sdl-freerdp.exe") == 0) {
         if (!patch_import(main_module, "USER32.dll", "SetCursor",

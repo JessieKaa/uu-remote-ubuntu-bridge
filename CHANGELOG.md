@@ -30,6 +30,9 @@ locked by the release manifest.
   promotes only a fully accepted UU build, preserves login and keyboard
   settings, refreshes bridge code, verifies XRDP state, and keeps local
   rollback copies
+- an opt-in process-local cursor guard for hosts where hidden or
+  cross-process-invalid Wine cursor handles break UU's independent cursor
+  channel; existing hosts retain the unmodified path by default
 
 ### Security
 
@@ -127,6 +130,8 @@ locked by the release manifest.
 - contain an upstream Wine memory or thread runaway with service-level memory,
   swap, and task ceilings so systemd rebuilds only the relay instead of
   allowing it to freeze the desktop
+- resolve extended direct-X11 navigation keys through the active display's
+  keysym map instead of assuming one fixed XFree86 keycode table
 
 - wait for the actual FreeRDP relay window after Wine's short-lived Unix
   launcher exits, verify that the spawned GNOME daemon owns its configured
@@ -141,7 +146,7 @@ locked by the release manifest.
 
 ### Validation
 
-- all 88 source, shell, documentation, updater, transaction, migration, and
+- all 90 source, shell, documentation, updater, transaction, migration, and
   helper-build tests pass
 - production promotion from UU `4.33.0.8907` to `4.34.0.8979` passed both
   runtime checks while preserving the account, direct-X11 input profile, and

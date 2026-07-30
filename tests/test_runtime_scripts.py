@@ -164,6 +164,7 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("UURB_PHYSICAL_KEY_DELAY_MS=%s", installer)
         self.assertIn("UURB_KEYBOARD_ROUTE=%s", installer)
         self.assertIn("UURB_NETWORK_INTERFACE=%s", installer)
+        self.assertIn("UURB_CURSOR_GUARD=%s", installer)
         self.assertIn("UURB_CURSOR_SIZE=%s", installer)
         self.assertIn("resolve_text_key_delay", installer)
         self.assertIn("EnvironmentFile=-%h/.config/uu-remote-bridge/environment", unit)
@@ -192,6 +193,11 @@ class RuntimeScriptTests(unittest.TestCase):
             'cursor_size_setting="${UURB_CURSOR_SIZE:-auto}"',
             launcher,
         )
+        self.assertIn(
+            'cursor_guard_setting="${UURB_CURSOR_GUARD:-off}"',
+            launcher,
+        )
+        self.assertIn("--cursor-guard off|on", installer)
         self.assertIn("resolve_cursor_size", launcher)
         self.assertIn('export UURB_CURSOR_SIZE="$cursor_size"', launcher)
         self.assertNotIn(
@@ -377,13 +383,26 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("+clipboard", launcher)
         self.assertNotIn("-clipboard", launcher)
 
-    def test_nested_relay_uses_absolute_ungrabbed_mouse(self):
+    def test_opt_in_cursor_guard_uses_absolute_ungrabbed_mouse(self):
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
 
-        self.assertIn("/mouse:relative:off,grab:off", launcher)
+        options = launcher.index("freerdp_mouse_options=()")
+        guard = launcher.index(
+            'if [[ "$cursor_guard_setting" == on ]]; then',
+            options,
+        )
+        mouse = launcher.index(
+            "freerdp_mouse_options+=(/mouse:relative:off,grab:off)",
+            guard,
+        )
+        relay = launcher.index('"${freerdp_mouse_options[@]}"', mouse)
+        self.assertLess(options, guard)
+        self.assertLess(guard, mouse)
+        self.assertLess(mouse, relay)
+        self.assertEqual(launcher.count("/mouse:relative:off,grab:off"), 1)
         self.assertNotIn("+mouse-relative", launcher)
 
-    def test_hidden_cursor_guard_is_scoped_to_the_relay(self):
+    def test_hidden_cursor_guard_is_opt_in_and_process_scoped(self):
         guard = (REPOSITORY / "src" / "uu_cursor_guard.c").read_text()
         builder = (REPOSITORY / "scripts" / "build-compat.sh").read_text()
         installer = (REPOSITORY / "install.sh").read_text()
@@ -404,9 +423,27 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertNotIn("cursor->flags |= CURSOR_SHOWING", guard)
         self.assertNotIn('"ClipCursor"', guard)
         self.assertNotIn('"ShowCursor"', guard)
+        self.assertIn("open_log(process_name)", guard)
+        self.assertIn(
+            '_wcsicmp(process_name, L"GameViewerServer.exe") != 0',
+            guard,
+        )
         for source in (builder, installer, launcher, verifier):
             self.assertIn("uu-cursor-guard.dll", source)
         self.assertIn("src/uu_cursor_guard.c", digest)
+        self.assertIn(
+            'cursor_guard_setting="${UURB_CURSOR_GUARD:-off}"',
+            launcher,
+        )
+        self.assertIn('[[ "$cursor_guard_setting" == on ]]', launcher)
+        self.assertIn(
+            "optional cursor guard is disabled and not loaded",
+            verifier,
+        )
+        self.assertIn(
+            "opt-in relay and UU cursor guards are active",
+            verifier,
+        )
         injection = launcher.index(
             '"$cursor_guard_windows_path" sdl-freerdp.exe'
         )

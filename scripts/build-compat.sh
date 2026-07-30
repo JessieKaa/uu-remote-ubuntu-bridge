@@ -25,6 +25,9 @@ mkdir -p "$output_dir"
 "$cc" "${common[@]}" "${pe_link[@]}" -shared \
     -o "$output_dir/uu-input-bridge.dll" \
     "$repo_dir/src/uu_input_bridge.c" -luser32
+"$cc" "${common[@]}" "${pe_link[@]}" -shared \
+    -o "$output_dir/uu-cursor-guard.dll" \
+    "$repo_dir/src/uu_cursor_guard.c" -luser32 -lgdi32
 "$cc" "${common[@]}" "${pe_link[@]}" -municode -mwindows \
     -o "$output_dir/uu-input-broker.exe" \
     "$repo_dir/src/uu_input_broker.c" -luser32 -lws2_32
@@ -48,6 +51,7 @@ mkdir -p "$output_dir"
     "$repo_dir/src/uu_x11_input.c" -ldl
 
 "$strip" \
+    "$output_dir/uu-cursor-guard.dll" \
     "$output_dir/uu-input-bridge.dll" \
     "$output_dir/uu-input-broker.exe" \
     "$output_dir/uu-injector.exe" \

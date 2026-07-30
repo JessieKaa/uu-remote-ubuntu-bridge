@@ -22,6 +22,31 @@ installer, for example:
   --grd-fd-restart-threshold 4096
 ```
 
+## UU cursor is missing or too small
+
+Keep the relay resolution and Wine DPI unchanged. The process-local cursor
+guard is an opt-in compatibility extension, so hosts with a working cursor do
+not load it. Enable it when the controller loses the cursor, renders it too
+small, or the UU server records `ERROR_INVALID_CURSOR_HANDLE`:
+
+```bash
+./install.sh --skip-packages --skip-account-login \
+  --cursor-guard on --cursor-size auto
+```
+
+`auto` reads the physical GNOME Xcursor size and creates the same-sized
+fallback arrow for UU's independent cursor channel. For a controller that
+still renders the cursor too small, use a fixed size:
+
+```bash
+./install.sh --skip-packages --skip-account-login \
+  --cursor-guard on --cursor-size 64
+```
+
+Accepted values are `24` through `128`. Disable the extension with
+`--cursor-guard off` when it is unnecessary. It does not change XRDP, VNC,
+TeamViewer, the physical desktop resolution, or Wine's global DPI.
+
 ## Controller remains at “finding routes”
 
 This message can be misleading: the controller may be waiting for the host to

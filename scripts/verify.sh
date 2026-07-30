@@ -37,6 +37,9 @@ case "$release_version" in
         ;;
 esac
 freerdp="$wine_prefix/drive_c/Program Files/FreeRDP/sdl-freerdp.exe"
+cursor_guard="$wine_prefix/compat/uu-cursor-guard.dll"
+cursor_guard_log="$wine_prefix/drive_c/users/$bridge_user/Temp/uu-cursor-guard.log"
+cursor_reader_guard_log="$wine_prefix/drive_c/users/$bridge_user/AppData/Local/Temp/uu-cursor-guard.log"
 libei_backport="$wine_prefix/compat/libei/libei.so.1.2.1"
 network_filter="$wine_prefix/compat/uu-network-filter.so"
 x11_input_helper="$wine_prefix/compat/uu-x11-input"
@@ -60,6 +63,8 @@ saved_rdp_port="$(saved_setting UURB_RDP_PORT)"
 rdp_port="${UURB_RDP_PORT:-${saved_rdp_port:-3390}}"
 saved_keyboard_route="$(saved_setting UURB_KEYBOARD_ROUTE)"
 keyboard_route="${UURB_KEYBOARD_ROUTE:-${saved_keyboard_route:-rdp}}"
+saved_cursor_guard="$(saved_setting UURB_CURSOR_GUARD)"
+cursor_guard_setting="${UURB_CURSOR_GUARD:-${saved_cursor_guard:-off}}"
 
 relay_listener_ready() {
     /usr/bin/ss -H -ltnp "sport = :$rdp_port" 2>/dev/null | \
@@ -213,6 +218,37 @@ if [[ -f "$freerdp" ]] && \
     pass 'pinned Windows FreeRDP SDL client is installed'
 else
     fail 'Windows FreeRDP SDL client verification failed'
+fi
+
+relay_pid="$(pgrep -n -u "$UID" -x 'sdl-freerdp.exe' || true)"
+cursor_server_pid="$(
+    pgrep -o -u "$UID" -f 'GameViewerServer\.exe' || true
+)"
+if [[ "$cursor_guard_setting" == on ]]; then
+    if [[ -f "$cursor_guard" && -n "$relay_pid" &&
+          -n "$cursor_server_pid" ]] &&
+       grep -Fq "$cursor_guard" "/proc/$relay_pid/maps" 2>/dev/null &&
+       grep -Fq "$cursor_guard" "/proc/$cursor_server_pid/maps" 2>/dev/null &&
+       grep -q 'UU relay cursor guard active' \
+           "$cursor_guard_log" 2>/dev/null &&
+       grep -q 'UU cursor reader guard active' \
+           "$cursor_reader_guard_log" 2>/dev/null; then
+        pass 'opt-in relay and UU cursor guards are active'
+    else
+        fail 'opt-in relay or UU cursor guard is missing or inactive'
+    fi
+elif [[ "$cursor_guard_setting" == off ]]; then
+    if { [[ -z "$relay_pid" ]] ||
+         ! grep -Fq "$cursor_guard" "/proc/$relay_pid/maps" 2>/dev/null; } &&
+       { [[ -z "$cursor_server_pid" ]] ||
+         ! grep -Fq "$cursor_guard" \
+             "/proc/$cursor_server_pid/maps" 2>/dev/null; }; then
+        pass 'optional cursor guard is disabled and not loaded'
+    else
+        fail 'cursor guard state does not match the disabled setting'
+    fi
+else
+    fail 'cursor guard setting is neither off nor on'
 fi
 
 if [[ -f "$bridge_log" ]] && \

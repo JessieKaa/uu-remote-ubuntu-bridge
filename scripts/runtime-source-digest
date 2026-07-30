@@ -26,6 +26,7 @@ runtime_files=(
     scripts/uu-remote-bridge
     scripts/upgrade-uu-remote.sh
     scripts/verify.sh
+    src/uu_cursor_guard.c
     src/uu_injector.c
     src/uu_input_bridge.c
     src/uu_input_broker.c

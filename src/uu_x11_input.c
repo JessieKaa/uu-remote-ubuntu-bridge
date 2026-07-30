@@ -19,9 +19,12 @@
 /* Keep the helper buildable with runtime X11 libraries only. */
 typedef struct _XDisplay Display;
 typedef int Bool;
+typedef unsigned long KeySym;
+typedef unsigned char KeyCode;
 typedef Display *(*x_open_display_fn)(const char *);
 typedef int (*x_close_display_fn)(Display *);
 typedef int (*x_sync_fn)(Display *, Bool);
+typedef KeyCode (*x_keysym_to_keycode_fn)(Display *, KeySym);
 typedef Bool (*xtest_query_extension_fn)(Display *, int *, int *, int *, int *);
 typedef Bool (*xtest_fake_key_event_fn)(Display *, unsigned int, Bool,
                                         unsigned long);
@@ -32,6 +35,7 @@ typedef struct x11_api {
     x_open_display_fn open_display;
     x_close_display_fn close_display;
     x_sync_fn sync;
+    x_keysym_to_keycode_fn keysym_to_keycode;
     xtest_query_extension_fn query_extension;
     xtest_fake_key_event_fn fake_key_event;
 } x11_api;
@@ -116,58 +120,64 @@ static void sleep_milliseconds(uint64_t milliseconds)
         ;
 }
 
-static unsigned int extended_scan_to_x_keycode(unsigned int scan)
+static KeySym extended_scan_to_keysym(unsigned int scan)
 {
     switch (scan) {
     case 0x1c:
-        return 108; /* keypad Enter */
+        return 0xff8dUL; /* XK_KP_Enter */
     case 0x1d:
-        return 109; /* right Control */
+        return 0xffe4UL; /* XK_Control_R */
     case 0x35:
-        return 112; /* keypad Divide */
+        return 0xffafUL; /* XK_KP_Divide */
     case 0x37:
-        return 111; /* Print */
+        return 0xff61UL; /* XK_Print */
     case 0x38:
-        return 113; /* right Alt */
+        return 0xffeaUL; /* XK_Alt_R */
     case 0x47:
-        return 97;  /* Home */
+        return 0xff50UL; /* XK_Home */
     case 0x48:
-        return 98;  /* Up */
+        return 0xff52UL; /* XK_Up */
     case 0x49:
-        return 99;  /* Page Up */
+        return 0xff55UL; /* XK_Prior */
     case 0x4b:
-        return 100; /* Left */
+        return 0xff51UL; /* XK_Left */
     case 0x4d:
-        return 102; /* Right */
+        return 0xff53UL; /* XK_Right */
     case 0x4f:
-        return 103; /* End */
+        return 0xff57UL; /* XK_End */
     case 0x50:
-        return 104; /* Down */
+        return 0xff54UL; /* XK_Down */
     case 0x51:
-        return 105; /* Page Down */
+        return 0xff56UL; /* XK_Next */
     case 0x52:
-        return 106; /* Insert */
+        return 0xff63UL; /* XK_Insert */
     case 0x53:
-        return 107; /* Delete */
+        return 0xffffUL; /* XK_Delete */
     case 0x5b:
-        return 115; /* left Super */
+        return 0xffebUL; /* XK_Super_L */
     case 0x5c:
-        return 116; /* right Super */
+        return 0xffecUL; /* XK_Super_R */
     case 0x5d:
-        return 117; /* Menu */
+        return 0xff67UL; /* XK_Menu */
     default:
         return 0;
     }
 }
 
-static unsigned int event_to_x_keycode(const uurb_x11_key_event *event)
+static unsigned int event_to_x_keycode(const x11_api *api, Display *display,
+                                       const uurb_x11_key_event *event)
 {
     unsigned int scan = event->scan_code & 0xffU;
 
     if (scan == 0 || (event->flags & UURB_KEYEVENTF_UNICODE) != 0)
         return 0;
-    if ((event->flags & UURB_KEYEVENTF_EXTENDED) != 0)
-        return extended_scan_to_x_keycode(scan);
+    if ((event->flags & UURB_KEYEVENTF_EXTENDED) != 0) {
+        KeySym keysym = extended_scan_to_keysym(scan);
+
+        if (keysym == 0)
+            return 0;
+        return api->keysym_to_keycode(display, keysym);
+    }
     if (scan > 247U)
         return 0;
     return scan + 8U;
@@ -192,11 +202,14 @@ static bool load_x11_api(x11_api *api)
     api->close_display = (x_close_display_fn)dlsym(api->x11_library,
                                                    "XCloseDisplay");
     api->sync = (x_sync_fn)dlsym(api->x11_library, "XSync");
+    api->keysym_to_keycode = (x_keysym_to_keycode_fn)dlsym(
+        api->x11_library, "XKeysymToKeycode");
     api->query_extension = (xtest_query_extension_fn)dlsym(
         api->xtst_library, "XTestQueryExtension");
     api->fake_key_event = (xtest_fake_key_event_fn)dlsym(
         api->xtst_library, "XTestFakeKeyEvent");
     if (!api->open_display || !api->close_display || !api->sync ||
+        !api->keysym_to_keycode ||
         !api->query_extension || !api->fake_key_event)
         return false;
 
@@ -340,7 +353,8 @@ static void serve_client(int client, const char *token, x11_api *api,
             break;
 
         for (index = 0; index < request.count; index++) {
-            keycodes[index] = event_to_x_keycode(&events[index]);
+            keycodes[index] = event_to_x_keycode(api, display,
+                                                 &events[index]);
             if (keycodes[index] == 0) {
                 error = UURB_X11_ERROR_UNSUPPORTED;
                 break;

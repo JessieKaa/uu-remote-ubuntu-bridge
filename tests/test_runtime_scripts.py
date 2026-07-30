@@ -173,6 +173,8 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("UURB_PHYSICAL_KEY_DELAY_MS=%s", installer)
         self.assertIn("UURB_KEYBOARD_ROUTE=%s", installer)
         self.assertIn("UURB_NETWORK_INTERFACE=%s", installer)
+        self.assertIn("UURB_CURSOR_GUARD=%s", installer)
+        self.assertIn("UURB_CURSOR_SIZE=%s", installer)
         self.assertIn("resolve_text_key_delay", installer)
         self.assertIn("EnvironmentFile=-%h/.config/uu-remote-bridge/environment", unit)
         self.assertIn('bridge_display="${UURB_DISPLAY:-auto}"', launcher)
@@ -194,6 +196,21 @@ class RuntimeScriptTests(unittest.TestCase):
         )
         self.assertIn(
             'network_interface="${UURB_NETWORK_INTERFACE:-all}"',
+            launcher,
+        )
+        self.assertIn(
+            'cursor_size_setting="${UURB_CURSOR_SIZE:-auto}"',
+            launcher,
+        )
+        self.assertIn(
+            'cursor_guard_setting="${UURB_CURSOR_GUARD:-off}"',
+            launcher,
+        )
+        self.assertIn("--cursor-guard off|on", installer)
+        self.assertIn("resolve_cursor_size", launcher)
+        self.assertIn('export UURB_CURSOR_SIZE="$cursor_size"', launcher)
+        self.assertNotIn(
+            "org.gnome.desktop.interface cursor-size",
             launcher,
         )
         self.assertIn(
@@ -375,6 +392,78 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("+clipboard", launcher)
         self.assertNotIn("-clipboard", launcher)
 
+    def test_opt_in_cursor_guard_uses_absolute_ungrabbed_mouse(self):
+        launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
+
+        options = launcher.index("freerdp_mouse_options=()")
+        guard = launcher.index(
+            'if [[ "$cursor_guard_setting" == on ]]; then',
+            options,
+        )
+        mouse = launcher.index(
+            "freerdp_mouse_options+=(/mouse:relative:off,grab:off)",
+            guard,
+        )
+        relay = launcher.index('"${freerdp_mouse_options[@]}"', mouse)
+        self.assertLess(options, guard)
+        self.assertLess(guard, mouse)
+        self.assertLess(mouse, relay)
+        self.assertEqual(launcher.count("/mouse:relative:off,grab:off"), 1)
+        self.assertNotIn("+mouse-relative", launcher)
+
+    def test_hidden_cursor_guard_is_opt_in_and_process_scoped(self):
+        guard = (REPOSITORY / "src" / "uu_cursor_guard.c").read_text()
+        builder = (REPOSITORY / "scripts" / "build-compat.sh").read_text()
+        installer = (REPOSITORY / "install.sh").read_text()
+        launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
+        verifier = (REPOSITORY / "scripts" / "verify.sh").read_text()
+        digest = (REPOSITORY / "scripts" / "runtime-source-digest").read_text()
+
+        self.assertIn('"SetCursor"', guard)
+        self.assertIn('"GetCursorInfo"', guard)
+        self.assertIn('"GetIconInfo"', guard)
+        self.assertIn("if (cursor == NULL)", guard)
+        self.assertIn("IDC_ARROW", guard)
+        self.assertIn("CopyImage(", guard)
+        self.assertIn('L"UURB_CURSOR_SIZE"', guard)
+        self.assertIn("cursor_dimensions", guard)
+        self.assertIn("fallback_cursor_width != requested_size", guard)
+        self.assertIn("cursor->flags = CURSOR_SHOWING", guard)
+        self.assertNotIn("cursor->flags |= CURSOR_SHOWING", guard)
+        self.assertNotIn('"ClipCursor"', guard)
+        self.assertNotIn('"ShowCursor"', guard)
+        self.assertIn("open_log(process_name)", guard)
+        self.assertIn(
+            '_wcsicmp(process_name, L"GameViewerServer.exe") != 0',
+            guard,
+        )
+        for source in (builder, installer, launcher, verifier):
+            self.assertIn("uu-cursor-guard.dll", source)
+        self.assertIn("src/uu_cursor_guard.c", digest)
+        self.assertIn(
+            'cursor_guard_setting="${UURB_CURSOR_GUARD:-off}"',
+            launcher,
+        )
+        self.assertIn('[[ "$cursor_guard_setting" == on ]]', launcher)
+        self.assertIn(
+            "optional cursor guard is disabled and not loaded",
+            verifier,
+        )
+        self.assertIn(
+            "opt-in relay and UU cursor guards are active",
+            verifier,
+        )
+        injection = launcher.index(
+            '"$cursor_guard_windows_path" sdl-freerdp.exe'
+        )
+        reader_injection = launcher.index(
+            '"$cursor_guard_windows_path" GameViewerServer.exe'
+        )
+        bootstrap = launcher.index("\nbootstrap_account\n", injection)
+        self.assertLess(reader_injection, injection)
+        self.assertLess(injection, bootstrap)
+        self.assertIn("pgrep -n -u \"$UID\" -x 'sdl-freerdp.exe'", verifier)
+
     def test_phone_ime_unicode_input_is_normalized(self):
         bridge = (REPOSITORY / "src" / "uu_input_bridge.c").read_text()
         broker = (REPOSITORY / "src" / "uu_input_broker.c").read_text()
@@ -437,6 +526,13 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("ERROR_CONNECTION_ABORTED", broker)
         self.assertIn("release_pressed_keys", helper)
         self.assertIn("minimum_hold_ms", helper)
+        self.assertIn("XKeysymToKeycode", helper)
+        self.assertIn("extended_scan_to_keysym", helper)
+        self.assertIn("0xff52UL; /* XK_Up */", helper)
+        self.assertIn("0xff54UL; /* XK_Down */", helper)
+        self.assertIn("0xff51UL; /* XK_Left */", helper)
+        self.assertIn("0xff53UL; /* XK_Right */", helper)
+        self.assertNotIn("return 104; /* Down */", helper)
         self.assertNotIn("XTestFakeButtonEvent", helper)
 
         with tempfile.TemporaryDirectory() as temporary:

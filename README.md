@@ -129,11 +129,14 @@ run:
 uu-remote open
 ```
 
-This reveals the installed Wine application itself on the physical desktop.
-The bridge owns one UU client process and keeps it minimized until requested;
-the host server and `Ubuntu-Desktop-Relay` remain on the private X display.
-The launcher therefore opens neither a recursive desktop mirror nor a second
-Wine prefix.
+This opens a native TigerVNC window containing only the installed Wine
+application. UU's client, host server, input broker, and
+`Ubuntu-Desktop-Relay` remain together on the private X display; a
+loopback-only, single-window VNC sidecar carries the management window to
+GNOME. It does not mirror the complete private desktop, so it cannot produce
+the recursive desktop view. It also avoids starting a second Wine prefix or
+splitting one Wine prefix across two X displays. Closing the window minimizes
+the UU client and restores relay focus automatically.
 
 The localhost-only noVNC view remains available for bridge diagnostics:
 
@@ -147,6 +150,13 @@ Both noVNC and its VNC backend listen on loopback only, so the VNC side needs
 no separate password and is not reachable from the LAN. Override occupied
 local ports during installation with `--console-web-port` and
 `--console-vnc-port`.
+
+For a Mac that must control the current physical Ubuntu desktop while this
+bridge owns GNOME's desktop-sharing RDP session, use the included
+`scripts/macos-connect-7090.applescript` launcher. Its default action opens an
+authenticated, loopback-only VNC view through passwordless SSH; it does not
+start a second RDP session or expose VNC to the LAN. See
+[macOS current-desktop access](docs/macos-current-desktop.md).
 
 On the compatible `rdp` route, the default 8 ms text-key delay prevents UU's
 phone keyboard from overwhelming the Wine-to-FreeRDP input boundary. An
@@ -250,6 +260,11 @@ guard remain as defense in depth:
 ```
 
 Set the threshold to `0` only when deliberately disabling that guard.
+The launcher also restores the 65536 soft limit itself because a
+`runuser`/PAM boundary in an optional system application-profile wrapper can
+replace the unit's inherited soft limit. Verification recognizes that wrapper
+and inspects the relay listener in its network namespace without exposing the
+port on the host.
 
 ### Update an existing installation
 
@@ -460,6 +475,8 @@ The RDP hop targets loopback and pins GNOME's certificate fingerprint.
 | `scripts/uu_update_manager.py` | Daily checks, health recovery, and resumable Codex repair state machine |
 | `scripts/configure-updater.sh` | Install, select a behavior track, and remove maintenance timers |
 | `scripts/uu-remote-bridge` | Supervised UU/Xvfb/FreeRDP orchestration |
+| `scripts/uu-remote-console` | Single-window desktop launcher and explicit noVNC diagnostic console |
+| `scripts/macos-connect-7090.applescript` | Mac launcher for current-desktop VNC over passwordless SSH |
 | `scripts/uu-agent` | Runtime-discovered UU controller CLI and private-display diagnostics |
 | `scripts/upgrade-uu-remote.sh` | Fast-forward, guarded product promotion, runtime refresh, verification, and rollback |
 | `scripts/uu_connection_status.py` | Privacy-safe transport and key-watchdog diagnosis |
@@ -484,6 +501,7 @@ ID, raw production log, screenshot, or private desktop content is committed.
 - [Automated repair agent handoff](docs/automated-repair-agent-handoff.md)
 - [UU controller CLI and remote agent](docs/controller-agent.md)
 - [Mobile-keyboard parity handoff](docs/mobile-keyboard-parity-handoff.md)
+- [macOS current-desktop access](docs/macos-current-desktop.md)
 - [XRDP client stall and UU keyboard recovery](docs/xrdp-and-keyboard-recovery.md)
 - [Unattended startup after reboot](docs/unattended-startup.md)
 - [Methodology and tool inventory](docs/methodology-and-toolkit.md)

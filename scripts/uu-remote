@@ -13,8 +13,6 @@ registry_cleaner_bin="$HOME/.local/libexec/uu-clean-wine-device-registry"
 console_bin="$HOME/.local/bin/uu-remote-console"
 app_dir="$WINEPREFIX/drive_c/Program Files/Netease/GameViewer"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/uu-remote"
-bridge_runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$UID}/uu-remote-bridge"
-client_request_file="$bridge_runtime_dir/open-client"
 systemctl_user=(
     /usr/bin/env
     "DBUS_SESSION_BUS_ADDRESS=unix:path=${XDG_RUNTIME_DIR:-/run/user/$UID}/bus"
@@ -29,29 +27,6 @@ notify_error() {
 }
 
 mkdir -p "$state_dir"
-
-physical_client_windows() {
-    local name
-    local window
-
-    while read -r window; do
-        name="$(/usr/bin/xdotool getwindowname "$window" 2>/dev/null || true)"
-        if [[ "$name" == GameViewer || "$name" == *UU* ]]; then
-            printf '%s\n' "$window"
-        fi
-    done < <(
-        /usr/bin/xdotool search --class gameviewer.exe 2>/dev/null || true
-    )
-}
-
-activate_physical_client() {
-    local -a windows=()
-
-    mapfile -t windows < <(physical_client_windows)
-    ((${#windows[@]} > 0)) || return 1
-    /usr/bin/xdotool windowmap "${windows[-1]}" \
-        windowactivate --sync "${windows[-1]}" >/dev/null 2>&1 || true
-}
 
 case "${1:-open}" in
     status)
@@ -126,29 +101,11 @@ case "${1:-open}" in
             notify_error 'UU Remote is not installed in the bridge Wine prefix.'
             exit 1
         fi
-        if activate_physical_client; then
-            exit 0
+        if [[ ! -x "$console_bin" ]]; then
+            notify_error 'The UU Remote window helper is not installed.'
+            exit 1
         fi
-        if ! /usr/bin/pgrep -u "$UID" -f \
-            '(^|/)uu-remote-bridge($|[[:space:]])' >/dev/null; then
-            if ! "${systemctl_user[@]}" start uu-remote-bridge.service; then
-                notify_error 'The Ubuntu desktop bridge could not start.'
-                exit 1
-            fi
-        fi
-        /usr/bin/install -d -m 0700 "$bridge_runtime_dir"
-        request_tmp="$client_request_file.$$"
-        printf '%s\n' "$$" >"$request_tmp"
-        chmod 0600 "$request_tmp"
-        mv "$request_tmp" "$client_request_file"
-        for _ in {1..400}; do
-            if activate_physical_client; then
-                exit 0
-            fi
-            sleep 0.1
-        done
-        notify_error 'The native UU Remote window did not become ready.'
-        exit 1
+        exec "$console_bin" window "$@"
         ;;
     console)
         shift || true

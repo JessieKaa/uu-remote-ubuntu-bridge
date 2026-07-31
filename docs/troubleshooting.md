@@ -119,7 +119,34 @@ rollback.
 
 ## Device is online and video works, but control does not
 
-Check the compatibility log:
+First inspect the broker metadata:
+
+```bash
+broker="$HOME/.local/share/wineprefixes/uu-remote/drive_c/users/$USER/Temp/uu-input-broker.log"
+tail -80 "$broker"
+```
+
+Repeated `focus=timeout result=0 error=21` immediately after opening the local
+UU app means one Wine prefix was split across two X displays. Wine's foreground
+window state is shared across that prefix, so a physical-display
+`GameViewer.exe` can prevent the private `Ubuntu-Desktop-Relay` from becoming
+the Win32 foreground window even when X11 says it is active.
+
+Update and reinstall this launcher, then restart the bridge once:
+
+```bash
+git pull --ff-only
+./install.sh --skip-packages --skip-account-login
+uu-remote restart
+```
+
+`uu-remote open` must present a `UU Remote - TigerVNC` window while
+`GameViewer.exe`, `GameViewerServer.exe`, `uu-input-broker.exe`, and
+`sdl-freerdp.exe` all retain the same private `DISPLAY`. Do not launch the
+prefix's `GameViewer.exe` directly on `DISPLAY=:0`. A healthy fresh input call
+reports `focus=ready`, a matching result count, and `error=0`.
+
+Then check the compatibility hook log:
 
 ```bash
 log="$HOME/.local/share/wineprefixes/uu-remote/drive_c/users/$USER/AppData/Local/Temp/uu-input-bridge.log"
@@ -152,6 +179,37 @@ An `unsupported executable` result is intentional. Stage and audit the new
 release with `scripts/stage-uu-release.sh` and
 `scripts/audit-gameviewer.py`; follow `docs/upstream-maintenance.md`. Do not
 add only the new hash to an old manifest.
+
+## Mac RDP is rejected or VNC is black
+
+Do not connect a second RDP client to the bridge's desktop-sharing port. The
+internal SDL FreeRDP process already owns that GNOME session. Port 3389 is
+GNOME remote login and opens a separate desktop.
+
+An SSH tunnel to `::1:5900` can also be wrong even though it connects. On the
+validated host that socket belonged to x11vnc on an unrelated Xvfb display
+`:42`, so the Mac received a black or stale desktop.
+
+Use the maintained launcher and its default **Current Desktop** action:
+
+```bash
+~/.local/bin/uu-remote-console relay-port
+```
+
+On the Mac, the launcher forwards local `localhost:15922` to that loopback
+port over the `glassagent-ubuntu` SSH alias. The first connection asks for the
+bridge password; select **Remember password**. A healthy connection leaves no
+LAN VNC listener:
+
+```bash
+ss -ltnp | grep 5922
+```
+
+The Ubuntu address must be `127.0.0.1:5922`. The Mac may expose both
+`127.0.0.1:15922` and `[::1]:15922`, but only while the SSH tunnel is active.
+If Ubuntu is simultaneously viewing the Mac during a test, the two remote
+windows form a recursive image. Close the Ubuntu-to-Mac viewer; this is not a
+black-screen fault.
 
 ## First click forces the UU session to exit
 
@@ -216,8 +274,12 @@ GNOME RDP only. `scripts/verify.sh` confirms the running process mapped that
 library, and a timed verifier rejects renewed descriptor growth.
 
 The 65536 soft limit and 4096-descriptor relay rebuild remain as defense in
-depth. Rerun the installer if the verifier reports a 1024 limit, a missing
-backport, or installed-source drift. The threshold is configurable with
+depth. The launcher raises its own soft limit after any `runuser`/PAM boundary,
+because that boundary can replace a system unit's 65536 limit with 1024. The
+quick verifier also recognizes the supported application-profile service and
+checks GNOME RDP's listener inside its network namespace. Rerun the installer
+if the verifier still reports a 1024 limit, a missing backport, or
+installed-source drift. The threshold is configurable with
 `--grd-fd-restart-threshold`; `0` disables only the fallback guard, not the
 backport.
 

@@ -55,6 +55,57 @@ longer exists. It never deletes an unowned display lock.
 The X server uses an `Xauthority` cookie and `-nolisten tcp`; it is not exposed
 as a network service.
 
+### Local management window
+
+`uu-remote open` keeps every process in the dedicated Wine prefix on the
+private X display. It maps the existing `GameViewer.exe` management window,
+binds `x11vnc` to that one X window and IPv4 loopback, and opens the result in
+TigerVNC on the logged-in GNOME desktop. The sidecar never exports the private
+root window, so the physical desktop cannot recurse through its own relay.
+
+The launcher holds a per-user lock to prevent duplicate viewers. While it is
+open, a runtime marker permits the management window to be raised; the input
+broker can still focus the relay before each controller input. Closing or
+terminating the viewer stops the sidecar, minimizes the management window,
+removes the marker, and raises `Ubuntu-Desktop-Relay`. This design avoids
+Wine's process-global foreground state spanning two unrelated X displays,
+which otherwise makes `SetForegroundWindow` fail even when X11 reports the
+relay as active.
+
+The full private-display noVNC console remains an explicit diagnostic command,
+`uu-remote console`; it is not the desktop-launcher path.
+
+### External current-desktop view
+
+GNOME's desktop-sharing RDP endpoint is already occupied by the internal
+`Ubuntu-Desktop-Relay` client. A second RDP client cannot join that same
+desktop concurrently; GNOME's remote-login endpoint creates a separate login
+session instead.
+
+`uu-remote-console relay` provides a bounded path for an authorized Mac:
+
+```text
+macOS Screen Sharing
+        |
+        | localhost:15922
+        v
+passwordless SSH tunnel
+        |
+        | Ubuntu 127.0.0.1:5922
+        v
+x11vnc, one Ubuntu-Desktop-Relay window
+        |
+        v
+existing SDL FreeRDP client -> current GNOME desktop
+```
+
+The helper retrieves the existing bridge credential once, stores x11vnc's
+obscured form in a mode-0600 file, and requires VNC authentication in addition
+to SSH. It tolerates short readiness probes, waits for a real viewer, keeps the
+relay focused while connected, and exits after the viewer has been absent for
+five seconds. The listener remains IPv4 loopback-only on Ubuntu; SSH provides
+the Mac-side IPv4 and IPv6 localhost sockets.
+
 ### GNOME RDP relay
 
 GNOME Remote Desktop mirrors the existing GNOME session on port 3390. The
@@ -175,8 +226,12 @@ absent for ten seconds or re-injection fails, the inner supervisor exits so
 systemd rebuilds the complete relay instead of leaving a false-active service.
 The same existing supervisor samples GNOME Remote Desktop's descriptor count
 once every ten seconds. The user unit raises its descriptor limit to 65536,
-and the relay is rebuilt at a persistent default threshold of 4096 before
-`libei` can lose keyboard injection to `EMFILE`.
+and the launcher repeats that soft-limit raise after entering the user
+context. This second step matters when an optional system application-profile
+wrapper crosses `runuser`/PAM, which may otherwise reset the soft limit to
+1024. Failure to raise the limit is logged but never prevents the bridge from
+starting. The relay is rebuilt at a persistent default threshold of 4096
+before `libei` can lose keyboard injection to `EMFILE`.
 
 The primary repair is an isolated backport of upstream libei commit
 `ee27dd5c92e4e9496a36ca2d4112049fe02d2269`. Ubuntu 24.04's libei 1.2.1
@@ -187,6 +242,13 @@ prefix. Only the supervised GNOME RDP process receives its directory through
 `LD_LIBRARY_PATH`; Ubuntu's system library is not replaced. The limit and
 restart threshold remain independent containment if another descriptor leak
 appears.
+
+Verification accepts either the ordinary systemd user unit or the known
+system application-profile unit. A profile may place the relay in a private
+network namespace, so the checker reads the matching GNOME RDP process's
+`/proc/PID/net/tcp*` tables and requires a listening socket on the configured
+port. It does not require that private listener to appear in the host
+namespace.
 Shutdown first stops the supervised producers, then asks Wine's own server to
 exit and applies a bounded fallback only to Wine executables owned by the
 current user whose environment names the dedicated UU prefix. Other Wine

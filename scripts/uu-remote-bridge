@@ -120,7 +120,6 @@ xauth_file="$runtime_dir/Xauthority"
 x11_input_ready_file="$runtime_dir/x11-input.port"
 private_display_file="$runtime_dir/private-display"
 console_focus_file="$runtime_dir/console-focus"
-client_request_file="$runtime_dir/open-client"
 wine_stop_bin="$HOME/.local/libexec/uu-remote-stop-wine-prefix"
 
 if [[ ! -x "$libei_dir/libei.so.1.2.1" ||
@@ -143,7 +142,6 @@ desktop_display=""
 desktop_wayland=""
 desktop_session_type=""
 desktop_xauthority=""
-desktop_client_environment=()
 active_network_interface=""
 active_keyboard_route="rdp"
 cursor_size=""
@@ -153,6 +151,29 @@ x11_input_token=""
 log() {
     printf '%s %s\n' "$(date --iso-8601=seconds)" "$*"
 }
+
+raise_open_file_limit() {
+    local hard_limit
+    local soft_limit
+    local target_limit=65536
+
+    soft_limit="$(ulimit -Sn)"
+    hard_limit="$(ulimit -Hn)"
+    if [[ "$hard_limit" != unlimited ]] &&
+       ((hard_limit < target_limit)); then
+        target_limit="$hard_limit"
+    fi
+    if [[ "$soft_limit" != unlimited ]] &&
+       ((soft_limit < target_limit)); then
+        if ! ulimit -Sn "$target_limit"; then
+            log "Could not raise the open-file limit above $soft_limit."
+            return 0
+        fi
+        log "Raised the open-file limit from $soft_limit to $target_limit."
+    fi
+}
+
+raise_open_file_limit
 
 select_network_interface() {
     local candidate
@@ -313,8 +334,7 @@ cleanup() {
         "$xauth_file" \
         "$x11_input_ready_file" \
         "$private_display_file" \
-        "$console_focus_file" \
-        "$client_request_file"
+        "$console_focus_file"
 }
 
 trap cleanup EXIT
@@ -667,13 +687,6 @@ if [[ -n "$active_network_interface" ]]; then
         active_network_interface=""
     fi
 fi
-desktop_client_environment=(
-    "DBUS_SESSION_BUS_ADDRESS=$desktop_bus"
-    "DISPLAY=$desktop_display"
-    "WAYLAND_DISPLAY=$desktop_wayland"
-    "XAUTHORITY=$desktop_xauthority"
-    "XDG_SESSION_TYPE=$desktop_session_type"
-)
 
 password="$(
     /usr/bin/env DBUS_SESSION_BUS_ADDRESS="$desktop_bus" \
@@ -869,66 +882,24 @@ fi
 /usr/bin/xdotool windowactivate --sync "$relay_window_id" \
     >/dev/null 2>&1 || true
 
-physical_client_windows() {
-    local name
-    local window
-
-    while read -r window; do
-        name="$(
-            /usr/bin/env "${desktop_client_environment[@]}" \
-                /usr/bin/xdotool getwindowname "$window" 2>/dev/null || true
-        )"
-        if [[ "$name" == GameViewer || "$name" == *UU* ]]; then
-            printf '%s\n' "$window"
-        fi
-    done < <(
-        /usr/bin/env "${desktop_client_environment[@]}" \
-            /usr/bin/xdotool search --class gameviewer.exe 2>/dev/null || true
-    )
-}
-
 bootstrap_account() {
-    local client_window=""
-    local -a client_windows=()
-    local mode="${1:-hide}"
-
     /opt/wine-stable/bin/wine "$service_control_exe" \
         GameViewerService 133 \
         >>"$state_dir/service-control.log" 2>&1 || true
-    "${wine_host_environment[@]}" "${desktop_client_environment[@]}" \
-        /opt/wine-stable/bin/wine start /unix "$uu_app_dir/GameViewer.exe" \
+    /opt/wine-stable/bin/wine start /unix "$uu_app_dir/GameViewer.exe" \
         >>"$state_dir/client-bootstrap.log" 2>&1 || true
 
-    for _ in {1..120}; do
-        mapfile -t client_windows < <(physical_client_windows)
-        ((${#client_windows[@]} > 0)) && break
-        sleep 0.1
-    done
-    if ((${#client_windows[@]} > 0)); then
-        client_window="${client_windows[-1]}"
-        if [[ "$mode" == show ]]; then
-            /usr/bin/env "${desktop_client_environment[@]}" \
-                /usr/bin/xdotool windowmap "$client_window" \
-                windowactivate --sync "$client_window" \
-                >/dev/null 2>&1 || true
-        else
-            for client_window in "${client_windows[@]}"; do
-                /usr/bin/env "${desktop_client_environment[@]}" \
-                    /usr/bin/xdotool windowminimize "$client_window" \
-                    >/dev/null 2>&1 || true
-            done
-        fi
-    else
-        log 'UU client did not create a physical desktop window.'
-    fi
+    sleep 1
+    /usr/bin/xdotool search --onlyvisible --name '网易UU远程' \
+        windowminimize >/dev/null 2>&1 || true
     /usr/bin/xdotool windowactivate --sync "$relay_window_id" \
         >/dev/null 2>&1 || true
 }
 
 # UU's GUI sends the account-login IPC message that makes the background
-# server visible to other devices. Keep that single client on the physical
-# desktop so the normal application launcher can reveal it without noVNC.
-bootstrap_account hide
+# server visible to other devices. Let it exit normally: forcibly closing it
+# also asks the server to exit.
+bootstrap_account
 
 supervise_server() {
     local last_pid="$1"
@@ -942,10 +913,6 @@ supervise_server() {
     local network_route_checks=0
 
     while true; do
-        if [[ -e "$client_request_file" ]]; then
-            rm -f "$client_request_file"
-            bootstrap_account show
-        fi
         candidate="$(pgrep -o -u "$UID" -f 'GameViewerServer\.exe' || true)"
         if [[ -z "$candidate" ]]; then
             missing_checks=$((missing_checks + 1))
@@ -963,7 +930,7 @@ supervise_server() {
                 >>"$state_dir/input-injector.log" 2>&1; then
                 last_pid="$candidate"
                 log "Re-injected UU server process $candidate."
-                bootstrap_account hide
+                bootstrap_account
             else
                 log "Could not re-inject UU server process $candidate."
                 return 1
@@ -1017,7 +984,7 @@ supervise_server() {
 supervise_server "$server_pid" &
 server_supervisor_pid=$!
 
-log "UU Remote server and the Windows RDP relay use DISPLAY=$DISPLAY; the UU client uses ${desktop_display:-$desktop_wayland}; physical keyboard route=$active_keyboard_route."
+log "UU Remote and the Windows RDP relay share DISPLAY=$DISPLAY; physical keyboard route=$active_keyboard_route."
 
 set +e
 critical_pids=(

@@ -394,7 +394,8 @@ install_packages() {
         git gnome-remote-desktop iproute2 jq libsecret-tools libx11-6 \
         libxml2-utils libxtst6 meson novnc \
         ninja-build openbox openssl p7zip-full patch python3 python3-attr \
-        python3-gi python3-jinja2 tar websockify x11-utils x11vnc xauth \
+        python3-gi python3-jinja2 tar tigervnc-viewer websockify \
+        x11-utils x11vnc xauth \
         xdotool xvfb zstd
     install_winehq
 }
@@ -451,8 +452,8 @@ for command in curl meson ninja patch readelf sha256sum /usr/bin/systemctl \
     "$grdctl_bin" "$openssl_bin" "$python_bin" "$secret_tool_bin" \
     "$wine_bin" "$wineserver_bin" /usr/bin/Xvfb /usr/bin/gsettings \
     /usr/bin/awk /usr/bin/ip /usr/bin/mcookie /usr/bin/openbox \
-    /usr/bin/sort /usr/bin/ss /usr/bin/xauth \
-    /usr/bin/websockify /usr/bin/x11vnc /usr/bin/xdotool \
+    /usr/bin/script /usr/bin/sort /usr/bin/ss /usr/bin/xauth \
+    /usr/bin/vncviewer /usr/bin/websockify /usr/bin/x11vnc /usr/bin/xdotool \
     /usr/libexec/gnome-remote-desktop-daemon; do
     if ! command -v "$command" >/dev/null 2>&1; then
         printf 'missing required command: %s\n' "$command" >&2
@@ -783,6 +784,20 @@ fi
 printf '%s' "$rdp_password" | "$secret_tool_bin" store \
     --label='UU Remote Ubuntu bridge RDP credential' \
     service uu-desktop-bridge username "$bridge_user"
+relay_vnc_auth_file="$config_dir/relay-vnc.pass"
+relay_vnc_auth_temporary="$(mktemp "$config_dir/relay-vnc.pass.XXXXXX")"
+printf -v relay_vnc_auth_quoted '%q' "$relay_vnc_auth_temporary"
+if ! printf '%s\n%s\ny\n' "$rdp_password" "$rdp_password" |
+    /usr/bin/script -qefc \
+        "/usr/bin/x11vnc -storepasswd $relay_vnc_auth_quoted" /dev/null \
+        >/dev/null 2>&1; then
+    rm -f "$relay_vnc_auth_temporary"
+    printf 'Could not create the loopback VNC credential.\n' >&2
+    exit 1
+fi
+chmod 0600 "$relay_vnc_auth_temporary"
+mv -f "$relay_vnc_auth_temporary" "$relay_vnc_auth_file"
+unset relay_vnc_auth_quoted
 unset rdp_password
 
 "${systemctl_user[@]}" daemon-reload

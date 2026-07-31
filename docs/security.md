@@ -17,6 +17,14 @@ that the same setup script can reverse.
 - The optional X11 physical-key helper binds an ephemeral loopback-only port,
   requires a fresh 256-bit token from the supervised launcher, and publishes
   its port only in the user's mode-0700 runtime directory.
+- The local management-window sidecar binds an uncredentialed VNC listener to
+  IPv4 loopback only, exports one UU X window rather than the private root
+  desktop, and exists only while its local TigerVNC viewer is open.
+- The optional macOS current-desktop relay exports only the existing
+  `Ubuntu-Desktop-Relay` window, binds authenticated VNC to Ubuntu loopback,
+  and is reachable from the Mac only through passwordless SSH. Its x11vnc
+  password file is obscured rather than encrypted, so it is mode 0600 and
+  never substitutes for the SSH boundary.
 - The FreeRDP hop targets `127.0.0.1` only and pins GNOME's configured TLS
   certificate by SHA-256 fingerprint.
 - The systemd unit is a user unit and has no root privileges.
@@ -41,6 +49,11 @@ The installer prompts without echo and stores the relay password with
 `secret-tool` in the user's login keyring. The launcher feeds it to FreeRDP on
 standard input, then unsets the shell variable. No credential is in this
 repository, the systemd unit, or a process command line.
+
+The installer also derives the loopback VNC authentication file from that
+credential. The file is user-readable only and x11vnc uses it solely for the
+short-lived SSH-tunneled current-desktop relay. macOS Screen Sharing can retain
+the matching password in the user's login keychain.
 
 Unattended mode additionally needs the GNOME login keyring password because
 PAM cannot unlock the keyring during GDM automatic login. The configurator

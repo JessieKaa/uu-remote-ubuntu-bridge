@@ -33,9 +33,11 @@ locked by the release manifest.
 - an opt-in process-local cursor guard for hosts where hidden or
   cross-process-invalid Wine cursor handles break UU's independent cursor
   channel; existing hosts retain the unmodified path by default
-- a native GNOME launcher for the installed Wine application: the bridge keeps
-  UU's single client on the physical display while its server and RDP relay
-  stay on the private display
+- a single-instance GNOME launcher that presents only UU's installed
+  management window through a loopback-only TigerVNC sidecar while every Wine
+  process remains on the private display
+- an authenticated, SSH-tunneled macOS launcher for viewing and controlling
+  the current physical Ubuntu desktop without a second GNOME RDP client
 - an explicit `uu-remote console` command for the localhost-only noVNC
   diagnostic view
 
@@ -55,6 +57,8 @@ locked by the release manifest.
 - bind the local UU console's VNC and WebSocket listeners exclusively to
   loopback, disable x11vnc's implicit IPv6 listener, and discover only the
   bridge-owned Xauthority file
+- bind the external current-desktop VNC relay to Ubuntu loopback, require both
+  SSH and VNC authentication, and remove it after the viewer disconnects
 
 ### Documentation
 
@@ -70,9 +74,19 @@ locked by the release manifest.
 
 ### Fixed
 
+- prevent the desktop launcher from splitting one Wine prefix across physical
+  and private X displays, which left video working but caused broker
+  `focus=timeout`, `result=0`, and `error=21` for keyboard and mouse input
+- replace the recursive full-desktop launcher view with a window-scoped
+  sidecar; closing it minimizes UU and restores the private RDP relay focus
+- replace a Mac shortcut that tunneled to an unrelated Xvfb display with a
+  probe-tolerant view of the existing `Ubuntu-Desktop-Relay` window
 - keep the private `Ubuntu-Desktop-Relay` window focused after controller or
   terminal-agent diagnostics activate the UU GUI, preventing Wine focus
   timeouts from leaving video visible while mouse and keyboard input fail
+- preserve the 65536 open-file limit when a system application-profile
+  wrapper crosses `runuser`/PAM, and teach verification to find both the
+  wrapper service and GNOME RDP's listener inside its network namespace
 - make `uu-agent` query the persistent systemd user bus so XRDP, VNC, SSH, and
   nested desktop session buses cannot hide the healthy bridge
 - use the installed `codex-auto-review` model at medium reasoning effort for

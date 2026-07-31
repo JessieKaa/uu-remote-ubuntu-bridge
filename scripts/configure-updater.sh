@@ -217,6 +217,8 @@ PY
             "$HOME/.local/bin/uu-remote-update"
         install -m 0755 "$repo_dir/scripts/uu-remote" \
             "$HOME/.local/bin/uu-remote"
+        install -m 0755 "$repo_dir/scripts/uu-remote-console" \
+            "$HOME/.local/bin/uu-remote-console"
         install -m 0755 \
             "$repo_dir/scripts/promote-approved-release.py" \
             "$repo_dir/scripts/stop-wine-prefix" \

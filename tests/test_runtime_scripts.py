@@ -227,7 +227,7 @@ class RuntimeScriptTests(unittest.TestCase):
             installer.index('stop uu-remote-bridge.service'),
         )
 
-    def test_native_app_is_default_and_console_remains_loopback_only(self):
+    def test_windowed_app_is_default_and_console_remains_loopback_only(self):
         console = (REPOSITORY / "scripts" / "uu-remote-console").read_text()
         command = (REPOSITORY / "scripts" / "uu-remote").read_text()
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
@@ -252,22 +252,29 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("private-display", console)
         self.assertIn("uu-remote-console.service", installer)
         self.assertIn("novnc", installer)
+        self.assertIn("tigervnc-viewer", installer)
         self.assertIn("websockify", installer)
         self.assertIn("x11vnc", installer)
+        self.assertIn("/usr/bin/vncviewer", installer)
         self.assertIn("uu-remote-console.service", uninstaller)
         self.assertIn("ExecStart=%h/.local/bin/uu-remote-console serve", unit)
         self.assertIn("NoNewPrivileges=yes", unit)
         self.assertIn("Exec=@EXEC@", desktop)
-        self.assertIn("StartupWMClass=gameviewer.exe", desktop)
+        self.assertIn("StartupWMClass=TigerVNC Viewer", desktop)
         self.assertNotIn("noVNC", desktop)
         self.assertIn('"$desktop_entry" "$HOME/.local/bin/uu-remote"', installer)
-        self.assertIn("activate_physical_client", command)
-        self.assertIn('client_request_file="$bridge_runtime_dir/open-client"', command)
+        self.assertIn('exec "$console_bin" window "$@"', command)
+        self.assertNotIn("activate_physical_client", command)
+        self.assertNotIn("open-client", command)
         self.assertIn('exec "$console_bin" open "$@"', command)
-        self.assertIn('"DISPLAY=$desktop_display"', launcher)
-        self.assertIn('client_request_file="$runtime_dir/open-client"', launcher)
-        self.assertIn("bootstrap_account hide", launcher)
-        self.assertIn("bootstrap_account show", launcher)
+        self.assertIn('-id "$client_window"', console)
+        self.assertIn("/usr/bin/flock -n 9", console)
+        self.assertIn("activate_existing_window", console)
+        self.assertIn("cleanup_window", console)
+        self.assertIn("127.0.0.1::$window_port", console)
+        self.assertNotIn("desktop_client_environment", launcher)
+        self.assertNotIn("open-client", launcher)
+        self.assertIn("bootstrap_account", launcher)
         self.assertIn('console_focus_file="$runtime_dir/console-focus"', launcher)
         self.assertIn('[[ ! -e "$console_focus_file"', launcher)
         self.assertIn("scripts/uu-remote-console", digest)
@@ -290,6 +297,54 @@ class RuntimeScriptTests(unittest.TestCase):
             "http://127.0.0.1:6086/vnc.html"
             "?autoconnect=1&resize=scale&reconnect=1",
         )
+
+    def test_macos_current_desktop_relay_is_tunneled_and_probe_tolerant(self):
+        console = (REPOSITORY / "scripts" / "uu-remote-console").read_text()
+        installer = (REPOSITORY / "install.sh").read_text()
+        macos_launcher = (
+            REPOSITORY / "scripts" / "macos-connect-7090.applescript"
+        ).read_text()
+
+        self.assertIn('relay_vnc_port="${UURB_RELAY_VNC_PORT:-5922}"', console)
+        self.assertIn("find_relay_window", console)
+        self.assertIn("-id \"$relay_window\"", console)
+        self.assertIn("-listen 127.0.0.1", console)
+        self.assertIn('-rfbauth "$relay_vnc_auth_file"', console)
+        self.assertIn("-forever", console)
+        self.assertIn("-shared", console)
+        self.assertIn("connected_checks >= 3", console)
+        self.assertIn("idle_checks >= 25", console)
+        self.assertIn("prepare_relay_vnc_auth", console)
+        self.assertIn("service uu-desktop-bridge", console)
+        self.assertIn("username \"$USER\"", console)
+        self.assertIn("/usr/bin/script -qefc", console)
+        self.assertIn("/usr/bin/script -qefc", installer)
+        self.assertIn("x11vnc -storepasswd $relay_vnc_auth_quoted", installer)
+        self.assertNotIn('-storepasswd "$rdp_password"', installer)
+        self.assertIn('property vncTunnelPort : 15922', macos_launcher)
+        self.assertIn(
+            '":127.0.0.1:" & (relayPort as text)',
+            macos_launcher,
+        )
+        self.assertIn("/usr/bin/ssh -fn", macos_launcher)
+        self.assertIn("ExitOnForwardFailure=yes", macos_launcher)
+        self.assertIn(
+            '~/.local/bin/uu-remote-console relay',
+            macos_launcher,
+        )
+        self.assertIn('portIsOpen("localhost"', macos_launcher)
+        self.assertIn('vnc://localhost:', macos_launcher)
+        self.assertNotIn("[::1]:5900", macos_launcher)
+
+        environment = os.environ | {"UURB_RELAY_VNC_PORT": "6022"}
+        result = subprocess.run(
+            [str(REPOSITORY / "scripts" / "uu-remote-console"), "relay-port"],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        self.assertEqual(result.stdout.strip(), "6022")
 
     def test_missing_or_uninjectable_uu_server_restarts_bridge(self):
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
@@ -387,6 +442,9 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("grd_fd_restart_threshold > 0", launcher)
         self.assertIn("restarting the relay before exhaustion", launcher)
         self.assertIn("LimitNOFILE=65536", unit)
+        self.assertIn("raise_open_file_limit", launcher)
+        self.assertIn("target_limit=65536", launcher)
+        self.assertIn('ulimit -Sn "$target_limit"', launcher)
         self.assertIn("GNOME RDP descriptor limit", verifier)
         self.assertIn("descriptor growth stayed bounded", verifier)
 
@@ -411,8 +469,7 @@ class RuntimeScriptTests(unittest.TestCase):
 
         readiness_loop = verifier.index("for _ in {1..180}; do")
         first_service_check = verifier.index(
-            '"${systemctl_user[@]}" is-active --quiet '
-            "uu-remote-bridge.service",
+            "bridge_service_active &&",
             readiness_loop,
         )
         first_relay_check = verifier.index(
@@ -429,6 +486,18 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertLess(first_relay_check, first_wait_end)
         self.assertLess(first_x11_check, first_wait_end)
         self.assertIn('[[ "$keyboard_route" != x11 ]]', verifier)
+
+    def test_verifier_supports_the_application_profile_network_namespace(self):
+        verifier = (REPOSITORY / "scripts" / "verify.sh").read_text()
+
+        self.assertIn(
+            "AstrillLazyRouter.ApplicationProfile@uuremote.service",
+            verifier,
+        )
+        self.assertIn("bridge_service_active", verifier)
+        self.assertIn("process_namespace_listener_ready", verifier)
+        self.assertIn('"/proc/$pid/net/tcp6"', verifier)
+        self.assertIn('$4 == "0A"', verifier)
 
     def test_user_service_starts_from_default_target(self):
         unit = (REPOSITORY / "systemd" / "uu-remote-bridge.service").read_text()
@@ -523,7 +592,7 @@ class RuntimeScriptTests(unittest.TestCase):
         reader_injection = launcher.index(
             '"$cursor_guard_windows_path" GameViewerServer.exe'
         )
-        bootstrap = launcher.index("\nbootstrap_account hide\n", injection)
+        bootstrap = launcher.index("\nbootstrap_account\n", injection)
         self.assertLess(reader_injection, injection)
         self.assertLess(injection, bootstrap)
         self.assertIn("pgrep -n -u \"$UID\" -x 'sdl-freerdp.exe'", verifier)

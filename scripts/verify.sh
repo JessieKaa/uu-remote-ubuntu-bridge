@@ -59,6 +59,8 @@ systemctl_user=(
     "DBUS_SESSION_BUS_ADDRESS=unix:path=${XDG_RUNTIME_DIR:-/run/user/$UID}/bus"
     /usr/bin/systemctl --user
 )
+system_profile_unit="${UURB_SYSTEM_PROFILE_UNIT:-io.github.lachlanchen.AstrillLazyRouter.ApplicationProfile@uuremote.service}"
+bridge_service_kind=""
 saved_rdp_port="$(saved_setting UURB_RDP_PORT)"
 rdp_port="${UURB_RDP_PORT:-${saved_rdp_port:-3390}}"
 saved_keyboard_route="$(saved_setting UURB_KEYBOARD_ROUTE)"
@@ -66,9 +68,71 @@ keyboard_route="${UURB_KEYBOARD_ROUTE:-${saved_keyboard_route:-rdp}}"
 saved_cursor_guard="$(saved_setting UURB_CURSOR_GUARD)"
 cursor_guard_setting="${UURB_CURSOR_GUARD:-${saved_cursor_guard:-off}}"
 
+bridge_service_active() {
+    if "${systemctl_user[@]}" is-active --quiet uu-remote-bridge.service; then
+        bridge_service_kind=user
+        return 0
+    fi
+    if /usr/bin/systemctl is-active --quiet "$system_profile_unit" \
+        2>/dev/null; then
+        bridge_service_kind=system-profile
+        return 0
+    fi
+    bridge_service_kind=""
+    return 1
+}
+
+bridge_service_property() {
+    local property="$1"
+
+    bridge_service_active || return 1
+    if [[ "$bridge_service_kind" == user ]]; then
+        "${systemctl_user[@]}" show uu-remote-bridge.service \
+            -p "$property" --value 2>/dev/null
+    else
+        /usr/bin/systemctl show "$system_profile_unit" \
+            -p "$property" --value 2>/dev/null
+    fi
+}
+
+grd_pid_for_port() {
+    pgrep -o -u "$UID" -f \
+        "^/usr/libexec/gnome-remote-desktop-daemon --rdp-port $rdp_port( |$)" \
+        2>/dev/null || true
+}
+
+process_namespace_listener_ready() {
+    local pid="$1"
+    local port_hex
+    local table
+
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+    printf -v port_hex '%04X' "$rdp_port"
+    for table in "/proc/$pid/net/tcp" "/proc/$pid/net/tcp6"; do
+        [[ -r "$table" ]] || continue
+        if /usr/bin/awk -v port="$port_hex" '
+            $4 == "0A" {
+                split($2, local_address, ":")
+                if (toupper(local_address[2]) == port)
+                    found = 1
+            }
+            END { exit !found }
+        ' "$table"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 relay_listener_ready() {
-    /usr/bin/ss -H -ltnp "sport = :$rdp_port" 2>/dev/null | \
-        /usr/bin/grep -q 'gnome-remote-de'
+    local pid
+
+    if /usr/bin/ss -H -ltnp "sport = :$rdp_port" 2>/dev/null | \
+        /usr/bin/grep -q 'gnome-remote-de'; then
+        return 0
+    fi
+    pid="$(grd_pid_for_port)"
+    process_namespace_listener_ready "$pid"
 }
 
 x11_route_ready() {
@@ -126,7 +190,7 @@ fail() {
 }
 
 for _ in {1..180}; do
-    if "${systemctl_user[@]}" is-active --quiet uu-remote-bridge.service && \
+    if bridge_service_active && \
        pgrep -u "$UID" -f 'GameViewerServer\.exe' >/dev/null && \
        pgrep -u "$UID" -f 'sdl-freerdp\.exe' >/dev/null && \
        relay_listener_ready && \
@@ -136,16 +200,17 @@ for _ in {1..180}; do
     sleep 0.25
 done
 
-if "${systemctl_user[@]}" is-active --quiet uu-remote-bridge.service; then
-    pass 'systemd user service is active'
+if bridge_service_active; then
+    if [[ "$bridge_service_kind" == user ]]; then
+        pass 'systemd user service is active'
+    else
+        pass "system application-profile service is active ($system_profile_unit)"
+    fi
 else
-    fail 'systemd user service is not active'
+    fail 'no supported bridge service is active'
 fi
 
-service_started_at="$(
-    "${systemctl_user[@]}" show uu-remote-bridge.service \
-        -p ExecMainStartTimestamp --value 2>/dev/null || true
-)"
+service_started_at="$(bridge_service_property ExecMainStartTimestamp || true)"
 service_start_epoch="$(date -d "$service_started_at" +%s 2>/dev/null || true)"
 latest_server_log=''
 for _ in {1..240}; do
@@ -328,10 +393,7 @@ else
     fail "GNOME RDP relay is unavailable on localhost:$rdp_port"
 fi
 
-grd_pid="$(
-    pgrep -o -u "$UID" -f \
-        "gnome-remote-desktop-daemon --rdp-port $rdp_port" || true
-)"
+grd_pid="$(grd_pid_for_port)"
 saved_grd_fd_restart_threshold="$(
     saved_setting UURB_GRD_FD_RESTART_THRESHOLD
 )"
@@ -420,8 +482,7 @@ if ((stability_seconds > 0)) && [[ -n "$server_pid" ]]; then
     fi
     if [[ -n "$grd_pid" ]]; then
         current_grd_pid="$(
-            pgrep -o -u "$UID" -f \
-                "gnome-remote-desktop-daemon --rdp-port $rdp_port" || true
+            grd_pid_for_port
         )"
         if [[ "$current_grd_pid" != "$grd_pid" ]]; then
             fail 'GNOME RDP changed during the descriptor-stability check'

@@ -783,6 +783,7 @@ class UpdateManagerTests(unittest.TestCase):
         self.assertIn("promote-approved-release.py", configurator)
         self.assertIn("gameviewer_patchlib.py", configurator)
         self.assertIn('scripts/uu-remote"', configurator)
+        self.assertIn('scripts/uu-remote-console"', configurator)
         self.assertIn("track-direct-x11-20260724", configurator)
         self.assertIn("track-rdp-broker-20260724", configurator)
         self.assertIn("--upgrade-existing", installer)

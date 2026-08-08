@@ -786,8 +786,9 @@ printf '%s' "$rdp_password" | "$secret_tool_bin" store \
     service uu-desktop-bridge username "$bridge_user"
 relay_vnc_auth_file="$config_dir/relay-vnc.pass"
 relay_vnc_auth_temporary="$(mktemp "$config_dir/relay-vnc.pass.XXXXXX")"
+relay_vnc_password="$(LC_ALL=C printf '%.8s' "$rdp_password")"
 printf -v relay_vnc_auth_quoted '%q' "$relay_vnc_auth_temporary"
-if ! printf '%s\n%s\ny\n' "$rdp_password" "$rdp_password" |
+if ! printf '%s\n%s\ny\n' "$relay_vnc_password" "$relay_vnc_password" |
     /usr/bin/script -qefc \
         "/usr/bin/x11vnc -storepasswd $relay_vnc_auth_quoted" /dev/null \
         >/dev/null 2>&1; then
@@ -798,6 +799,7 @@ fi
 chmod 0600 "$relay_vnc_auth_temporary"
 mv -f "$relay_vnc_auth_temporary" "$relay_vnc_auth_file"
 unset relay_vnc_auth_quoted
+unset relay_vnc_password
 unset rdp_password
 
 "${systemctl_user[@]}" daemon-reload

@@ -99,12 +99,13 @@ x11vnc, one Ubuntu-Desktop-Relay window
 existing SDL FreeRDP client -> current GNOME desktop
 ```
 
-The helper retrieves the existing bridge credential once, stores x11vnc's
-obscured form in a mode-0600 file, and requires VNC authentication in addition
-to SSH. It tolerates short readiness probes, waits for a real viewer, keeps the
-relay focused while connected, and exits after the viewer has been absent for
-five seconds. The listener remains IPv4 loopback-only on Ubuntu; SSH provides
-the Mac-side IPv4 and IPv6 localhost sockets.
+The helper retrieves the existing bridge credential once, explicitly limits
+it to classic VNC's eight-byte password width, stores x11vnc's obscured form in
+a mode-0600 file, and requires VNC authentication in addition to SSH. It
+tolerates short readiness probes, waits for a real viewer, keeps the relay
+focused while connected, and exits after the viewer has been absent for five
+seconds. The listener remains IPv4 loopback-only on Ubuntu; SSH provides the
+Mac-side IPv4 and IPv6 localhost sockets.
 
 ### GNOME RDP relay
 

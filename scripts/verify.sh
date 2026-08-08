@@ -44,6 +44,8 @@ libei_backport="$wine_prefix/compat/libei/libei.so.1.2.1"
 network_filter="$wine_prefix/compat/uu-network-filter.so"
 x11_input_helper="$wine_prefix/compat/uu-x11-input"
 x11_input_ready_file="${XDG_RUNTIME_DIR:-/run/user/$UID}/uu-remote-bridge/x11-input.port"
+private_display_file="${XDG_RUNTIME_DIR:-/run/user/$UID}/uu-remote-bridge/private-display"
+bridge_xauthority_file="${XDG_RUNTIME_DIR:-/run/user/$UID}/uu-remote-bridge/Xauthority"
 runtime_digest_file="$wine_prefix/compat/.runtime-source-sha256"
 # GameViewerServer is launched by Wine's service manager, which intentionally
 # does not inherit UU_INPUT_BRIDGE_LOG. The injected DLL therefore uses the
@@ -63,6 +65,8 @@ system_profile_unit="${UURB_SYSTEM_PROFILE_UNIT:-io.github.lachlanchen.AstrillLa
 bridge_service_kind=""
 saved_rdp_port="$(saved_setting UURB_RDP_PORT)"
 rdp_port="${UURB_RDP_PORT:-${saved_rdp_port:-3390}}"
+saved_resolution="$(saved_setting UURB_RESOLUTION)"
+resolution="${UURB_RESOLUTION:-${saved_resolution:-1920x1080}}"
 saved_keyboard_route="$(saved_setting UURB_KEYBOARD_ROUTE)"
 keyboard_route="${UURB_KEYBOARD_ROUTE:-${saved_keyboard_route:-rdp}}"
 saved_cursor_guard="$(saved_setting UURB_CURSOR_GUARD)"
@@ -141,6 +145,28 @@ x11_route_ready() {
         pgrep -u "$UID" -f "$x11_input_helper" >/dev/null &&
         [[ -s "$x11_input_ready_file" ]]
     }
+}
+
+process_environment_value() {
+    local name="$1"
+    local pid="$2"
+
+    [[ -r "/proc/$pid/environ" ]] || return 1
+    /usr/bin/tr '\0' '\n' <"/proc/$pid/environ" | \
+        /usr/bin/sed -n "s/^${name}=//p" | /usr/bin/head -n 1
+}
+
+display_geometry() {
+    local display="$1"
+    local xauthority="${2:-}"
+    local -a display_environment=(/usr/bin/env "DISPLAY=$display")
+
+    [[ -n "$display" ]] || return 1
+    if [[ -n "$xauthority" ]]; then
+        display_environment+=("XAUTHORITY=$xauthority")
+    fi
+    "${display_environment[@]}" /usr/bin/xdotool getdisplaygeometry \
+        2>/dev/null | /usr/bin/awk 'NF == 2 {print $1 "x" $2}'
 }
 
 server_startup_ready() {
@@ -379,6 +405,38 @@ elif [[ "$active_keyboard_route" == x11 ]]; then
     fi
 else
     pass 'compatible RDP physical-key route is active'
+fi
+
+private_display="$(cat "$private_display_file" 2>/dev/null || true)"
+private_geometry="$(
+    display_geometry "$private_display" "$bridge_xauthority_file" || true
+)"
+if [[ "$private_geometry" == "$resolution" ]]; then
+    pass "private UU canvas matches the saved relay size ($resolution)"
+else
+    fail "private UU canvas is ${private_geometry:-unavailable}, expected $resolution"
+fi
+
+if [[ "$active_keyboard_route" == x11 ]]; then
+    x11_input_pid="$(
+        pgrep -o -u "$UID" -f "$x11_input_helper" 2>/dev/null || true
+    )"
+    desktop_display="$(
+        process_environment_value DISPLAY "$x11_input_pid" || true
+    )"
+    desktop_xauthority="$(
+        process_environment_value XAUTHORITY "$x11_input_pid" || true
+    )"
+    desktop_geometry="$(
+        display_geometry "$desktop_display" "$desktop_xauthority" || true
+    )"
+    if [[ "$desktop_geometry" == "$resolution" ]]; then
+        pass "live X11 desktop matches the UU relay size ($resolution)"
+    elif [[ -n "$desktop_geometry" ]]; then
+        fail "live X11 desktop is $desktop_geometry but UU relay is $resolution; align --resolution to avoid black space or clipping"
+    else
+        fail 'live X11 desktop geometry could not be inspected'
+    fi
 fi
 
 configured_rdp_port="$(

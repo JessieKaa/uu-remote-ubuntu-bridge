@@ -74,6 +74,12 @@ locked by the release manifest.
 
 ### Fixed
 
+- reject a mismatched live X11 desktop/private UU canvas during verification,
+  so top-left-only video with black right or bottom space is diagnosed from
+  geometry instead of passing an otherwise healthy runtime check
+- explicitly use classic VNC's eight-byte credential width when deriving the
+  loopback current-desktop password, allowing long RDP relay credentials to
+  survive non-interactive installation
 - prevent the desktop launcher from splitting one Wine prefix across physical
   and private X displays, which left video working but caused broker
   `focus=timeout`, `result=0`, and `error=21` for keyboard and mouse input

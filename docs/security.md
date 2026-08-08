@@ -50,10 +50,13 @@ The installer prompts without echo and stores the relay password with
 standard input, then unsets the shell variable. No credential is in this
 repository, the systemd unit, or a process command line.
 
-The installer also derives the loopback VNC authentication file from that
-credential. The file is user-readable only and x11vnc uses it solely for the
-short-lived SSH-tunneled current-desktop relay. macOS Screen Sharing can retain
-the matching password in the user's login keychain.
+The installer also derives the loopback VNC authentication file from the first
+eight bytes of that credential, which is the limit of classic VNC password
+authentication. Truncating explicitly avoids x11vnc rejecting a longer RDP
+credential during non-interactive setup. The file is user-readable only and
+x11vnc uses it solely for the short-lived SSH-tunneled current-desktop relay.
+macOS Screen Sharing can retain the matching eight-character prefix in the
+user's login keychain.
 
 Unattended mode additionally needs the GNOME login keyring password because
 PAM cannot unlock the keyring during GDM automatic login. The configurator

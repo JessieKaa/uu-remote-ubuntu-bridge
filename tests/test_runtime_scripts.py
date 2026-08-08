@@ -318,7 +318,16 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("service uu-desktop-bridge", console)
         self.assertIn("username \"$USER\"", console)
         self.assertIn("/usr/bin/script -qefc", console)
+        self.assertIn(
+            'vnc_password="$(LC_ALL=C printf \'%.8s\' "$password")"',
+            console,
+        )
         self.assertIn("/usr/bin/script -qefc", installer)
+        self.assertIn(
+            'relay_vnc_password="$(LC_ALL=C printf \'%.8s\' '
+            '"$rdp_password")"',
+            installer,
+        )
         self.assertIn("x11vnc -storepasswd $relay_vnc_auth_quoted", installer)
         self.assertNotIn('-storepasswd "$rdp_password"', installer)
         self.assertIn('property vncTunnelPort : 15922', macos_launcher)
@@ -486,6 +495,9 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertLess(first_relay_check, first_wait_end)
         self.assertLess(first_x11_check, first_wait_end)
         self.assertIn('[[ "$keyboard_route" != x11 ]]', verifier)
+        self.assertIn("private UU canvas matches the saved relay size", verifier)
+        self.assertIn("live X11 desktop matches the UU relay size", verifier)
+        self.assertIn("align --resolution to avoid black space or clipping", verifier)
 
     def test_verifier_supports_the_application_profile_network_namespace(self):
         verifier = (REPOSITORY / "scripts" / "verify.sh").read_text()

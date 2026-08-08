@@ -275,6 +275,7 @@ prepare_relay_vnc_auth() {
     local password=""
     local quoted_temporary=""
     local temporary=""
+    local vnc_password=""
 
     if [[ -s "$relay_vnc_auth_file" ]]; then
         chmod 0600 "$relay_vnc_auth_file"
@@ -297,17 +298,21 @@ prepare_relay_vnc_auth() {
 
     /usr/bin/install -d -m 0700 "$config_dir"
     temporary="$(/usr/bin/mktemp "$config_dir/relay-vnc.pass.XXXXXX")"
+    # Classic VNC authentication consumes at most eight password bytes.
+    # Truncate explicitly so x11vnc does not reject a longer RDP credential
+    # and desynchronize its interactive confirmation prompts.
+    vnc_password="$(LC_ALL=C printf '%.8s' "$password")"
     printf -v quoted_temporary '%q' "$temporary"
-    if ! printf '%s\n%s\ny\n' "$password" "$password" |
+    if ! printf '%s\n%s\ny\n' "$vnc_password" "$vnc_password" |
         /usr/bin/script -qefc \
             "/usr/bin/x11vnc -storepasswd $quoted_temporary" /dev/null \
             >/dev/null 2>&1; then
         rm -f "$temporary"
-        unset password
+        unset password vnc_password
         printf 'The relay VNC credential could not be generated.\n' >&2
         return 1
     fi
-    unset password
+    unset password vnc_password
     chmod 0600 "$temporary"
     mv -f "$temporary" "$relay_vnc_auth_file"
 }

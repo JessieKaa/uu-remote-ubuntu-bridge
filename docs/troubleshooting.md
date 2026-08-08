@@ -432,6 +432,13 @@ white space. When XRDP is larger, FreeRDP can clip the right or bottom edge
 instead of scaling it. The GNOME top bar may still look plausible, so inspect
 the dimensions rather than judging only from the header.
 
+On an active direct-X11 bridge, the quick verifier performs this comparison
+too and fails with both dimensions when they differ:
+
+```bash
+./scripts/verify.sh --quick
+```
+
 Do not shrink UU to a very small window-derived size unless that low resolution
 is intentional. Restore a useful XRDP size first, then match UU. For example,
 if both should be `1920x1080`:

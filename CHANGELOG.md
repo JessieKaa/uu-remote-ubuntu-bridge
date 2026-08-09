@@ -66,7 +66,8 @@ locked by the release manifest.
 
 - distinguish UU's audio-disabled internal RDP relay from an unrelated SDL
   application holding a physical PipeWire sink open, with a scoped diagnosis
-  and Unreal `-nosound` recovery path
+  and Unreal `-nosound` recovery path; also document the later Wine UU
+  playback/capture streams and service-scoped XRDP audio isolation
 - document why a multi-session host can show an empty UU desktop and how to
   bind UU to the existing XRDP desktop without restarting or logging it out
 - document automatic maintenance, Codex resume state, reboot behavior, track

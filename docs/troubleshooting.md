@@ -543,7 +543,7 @@ desktop. This operation restarts only the UU bridge. It must not restart
 Restore historical automatic selection with `--desktop-target auto`, or
 select the physical seat with `--desktop-target physical`.
 
-## Physical speakers pulse while UU is connected
+## Physical speakers pulse or the UU client receives unwanted sound
 
 Do not assume that every sound heard during a UU session belongs to UU. The
 bridge's internal SDL FreeRDP command includes `/audio-mode:2`, so the nested
@@ -556,8 +556,8 @@ wpctl inspect STREAM_OR_CLIENT_ID
 pgrep -a -u "$UID" -f 'sdl-freerdp|GameViewer|SHI'
 ```
 
-In the 2026-08-09 incident, UU and FreeRDP owned no playback stream. The only
-continuous output was an Unreal packaged build:
+During the first 2026-08-09 inspection, UU and FreeRDP owned no playback
+stream. The only continuous output was an Unreal packaged build:
 
 ```text
 application.name = SDL Application
@@ -585,6 +585,53 @@ XRDP, GNOME Shell, and every window remained running.
 The durable Unreal-side fix is to launch remote previews with its supported
 `-nosound` option. Keep `-enablesound` as an explicit listening override. Do
 not add a polling daemon or a global WirePlumber mute rule for this symptom.
+
+That first diagnosis was valid for that stream graph, but it was not the whole
+incident. After the UU bridge restarted at 22:58, `wpctl status` showed two
+new streams owned by `GameViewerServer.exe` through Wine:
+
+```text
+Output/Audio  网易UU远程服务 -> physical USB S/PDIF
+Input/Audio   网易UU远程服务 <- C922 webcam microphone
+```
+
+The capture stream was active and `pipewire-pulse` repeatedly logged
+`[网易UU远程服务] overrun recover`. This was the remaining sound path. Mute
+both dynamically discovered UU stream nodes, then move only their exact links
+from physical devices to the existing XRDP virtual endpoints:
+
+```bash
+wpctl set-mute UU_OUTPUT_NODE 1
+wpctl set-mute UU_INPUT_NODE 1
+
+# Use IDs from `pw-link -I -l`; they are examples, not stable identifiers.
+pw-link -d UU_OUTPUT_FL PHYSICAL_PLAYBACK_FL
+pw-link -d UU_OUTPUT_FR PHYSICAL_PLAYBACK_FR
+pw-link -d PHYSICAL_CAPTURE_FL UU_INPUT_FL
+pw-link -d PHYSICAL_CAPTURE_FR UU_INPUT_FR
+
+pw-link UU_OUTPUT_FL XRDP_SINK_FL
+pw-link UU_OUTPUT_FR XRDP_SINK_FR
+pw-link XRDP_SOURCE_FL UU_INPUT_FL
+pw-link XRDP_SOURCE_FR UU_INPUT_FR
+```
+
+`wpctl set-mute` records the per-application input and output mute through
+WirePlumber's normal stream-restore mechanism. Do not edit WirePlumber's state
+file directly. For a second persistent, service-scoped device boundary, add:
+
+```ini
+# ~/.config/systemd/user/uu-remote-bridge.service.d/20-audio-isolation.conf
+[Service]
+Environment="PULSE_SINK=xrdp-sink"
+Environment="PULSE_SOURCE=xrdp-source"
+```
+
+Run `systemctl --user daemon-reload`; this does not restart the live bridge.
+The environment applies on its next normal restart. On the validated host,
+the live reroute caused both UU audio streams to close, stopped the overrun
+log at 23:17:18, suspended the webcam source, and left the physical output
+idle. UU, XRDP, GNOME Shell, and open windows remained alive.
 
 ## Service is active but UU stays offline after its server exits
 

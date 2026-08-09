@@ -137,6 +137,12 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn('"OPENSSL_MODULES=$native_openssl_modules"', launcher)
         self.assertIn("grd_user_service_was_active", launcher)
 
+    def test_internal_rdp_relay_cannot_play_audio_back_to_the_host(self):
+        launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
+
+        self.assertIn("/audio-mode:2", launcher)
+        self.assertNotIn("/audio-mode:0", launcher)
+
     def test_physical_session_uses_manager_display_fallback(self):
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
 

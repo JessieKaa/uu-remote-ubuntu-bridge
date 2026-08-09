@@ -543,6 +543,49 @@ desktop. This operation restarts only the UU bridge. It must not restart
 Restore historical automatic selection with `--desktop-target auto`, or
 select the physical seat with `--desktop-target physical`.
 
+## Physical speakers pulse while UU is connected
+
+Do not assume that every sound heard during a UU session belongs to UU. The
+bridge's internal SDL FreeRDP command includes `/audio-mode:2`, so the nested
+desktop relay does not intentionally play the shared desktop back into the
+host speakers. Identify the live PipeWire stream first:
+
+```bash
+wpctl status
+wpctl inspect STREAM_OR_CLIENT_ID
+pgrep -a -u "$UID" -f 'sdl-freerdp|GameViewer|SHI'
+```
+
+In the 2026-08-09 incident, UU and FreeRDP owned no playback stream. The only
+continuous output was an Unreal packaged build:
+
+```text
+application.name = SDL Application
+application.process.binary = SHI
+media.class = Stream/Output/Audio
+target.object = ...USB_Audio_2...sink
+```
+
+Its own log confirmed that SDL3 opened the physical USB S/PDIF output with a
+six-channel 48 kHz stream. Mute only the identified node while preserving the
+game and desktop:
+
+```bash
+wpctl set-mute STREAM_NODE_ID 1
+wpctl get-volume STREAM_NODE_ID
+```
+
+If the hardware still remains active, disconnect that application's two
+links from the physical sink and connect them to the existing XRDP virtual
+sink with `pw-link`. Use the exact names from `pw-link -l`; never change the
+system default sink merely to repair one application. On the affected host,
+this changed the physical S/PDIF node from running to idle while SHI, UU,
+XRDP, GNOME Shell, and every window remained running.
+
+The durable Unreal-side fix is to launch remote previews with its supported
+`-nosound` option. Keep `-enablesound` as an explicit listening override. Do
+not add a polling daemon or a global WirePlumber mute rule for this symptom.
+
 ## Service is active but UU stays offline after its server exits
 
 Current versions treat a missing `GameViewerServer.exe` lasting ten seconds,

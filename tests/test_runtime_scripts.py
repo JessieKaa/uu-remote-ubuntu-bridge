@@ -174,6 +174,11 @@ class RuntimeScriptTests(unittest.TestCase):
             launcher,
         )
         self.assertIn("expected an XRDP session", verifier)
+        self.assertIn('relay_normalized_display="$(', verifier)
+        self.assertIn(
+            '[[ "$relay_normalized_display" == "$target_normalized_display" ]]',
+            verifier,
+        )
 
     def test_runtime_settings_are_persistent_and_collision_safe(self):
         installer = (REPOSITORY / "install.sh").read_text()

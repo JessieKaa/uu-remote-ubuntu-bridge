@@ -537,8 +537,13 @@ if [[ -n "$grd_pid" ]]; then
             fi
             ;;
         :*)
-            if [[ "$(normalized_x_display "$relay_display")" ==
-                  "$(normalized_x_display "$desktop_target")" ]]; then
+            relay_normalized_display="$(
+                normalized_x_display "$relay_display"
+            )"
+            target_normalized_display="$(
+                normalized_x_display "$desktop_target"
+            )"
+            if [[ "$relay_normalized_display" == "$target_normalized_display" ]]; then
                 pass "GNOME RDP relay is pinned to X display $relay_display"
             else
                 fail "GNOME RDP relay uses ${relay_display:-no X display}, expected $desktop_target"

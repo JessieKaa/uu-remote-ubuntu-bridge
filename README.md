@@ -87,12 +87,14 @@ official UU window on the logged-in desktop before starting the private relay.
 Complete account sign-in and close that window. Re-running the same command is
 idempotent; unchanged FreeRDP build outputs are checksum-verified and reused.
 
-Port, resolution, private-display, phone-text pacing, optional physical-key
-pacing, physical-key route, and an optional UU-only network-interface choice
-are persistent and can be set without editing the service:
+Port, resolution, private-display, shared-desktop target, phone-text pacing,
+optional physical-key pacing, physical-key route, and an optional UU-only
+network-interface choice are persistent and can be set without editing the
+service:
 
 ```bash
 ./install.sh --rdp-port 3391 --resolution 2560x1440 --display auto \
+  --desktop-target auto \
   --text-key-delay-ms 8 --physical-key-delay-ms 0 \
   --keyboard-route rdp \
   --network-interface all
@@ -105,6 +107,15 @@ sessions. A later plain `./install.sh` preserves these choices.
 Requested ports and fixed displays are checked before use. A conflicting
 non-GNOME listener fails closed, and an installer error restarts a bridge that
 was active before the attempted upgrade.
+
+`--desktop-target auto` preserves normal discovery. On a workstation whose
+real working desktop is an existing XRDP session, use
+`--desktop-target xrdp`; the bridge follows the active `xrdp-sesman` session
+even if its X display number changes after reboot. `physical` selects the
+seat-attached GDM desktop, while `:N` selects one exact X display. An explicit
+target waits when unavailable and never falls back to a different desktop, so
+UU cannot silently open an empty physical desktop while XRDP windows remain
+elsewhere.
 
 The process-local cursor guard is a host-specific extension and defaults to
 `off`. Enable it only when the controller loses the cursor, renders it too
@@ -380,8 +391,11 @@ Phone / Windows / macOS UU controller
 
 UU sees one ordinary Windows desktop window. SDL FreeRDP relays that window to
 GNOME Remote Desktop, which owns supported GNOME capture and input. The
-launcher discovers the D-Bus of the live GNOME Shell, including XRDP sessions
-that use a private session bus, and keeps the RDP hop local to the host. When
+launcher discovers the D-Bus of the selected live GNOME Shell, including XRDP
+sessions that use a private session bus, and keeps the RDP hop local to the
+host. Automatic selection remains the default; a persistent `xrdp`,
+`physical`, or exact-display target can prevent multi-session hosts from
+switching desktops after reboot. When
 Wine denies `SendInput` from UU's service token, so a bounded broker repeats
 the same input request from a normal user Wine process. On an explicitly
 selected X11 target, physical keys and normalized, layout-representable phone

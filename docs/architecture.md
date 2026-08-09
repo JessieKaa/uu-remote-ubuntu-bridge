@@ -260,6 +260,16 @@ different target wiring used by physical GNOME, XRDP, and persistent user
 managers. If no user GNOME Shell exists yet, it waits quietly and attaches when
 the desktop becomes available.
 
+Desktop identity is independent of the private UU canvas display. By default,
+the launcher follows the graphical environment imported into the persistent
+user manager and retains its historical newest-session fallback. A persistent
+`UURB_DESKTOP_TARGET=xrdp` instead matches the live GNOME Shell's logind
+session service (`xrdp-sesman`); `physical` matches a seat-attached/GDM
+session, and `:N` matches an exact X display. Explicit targets fail closed by
+waiting: they never substitute another logged-in desktop. This lets Windows
+RDP and direct UU control the same long-lived XRDP session without restarting
+XRDP, GNOME Shell, or any application window.
+
 If the normal `gnome-remote-desktop.service` was active before the bridge, the
 launcher records that state, temporarily replaces it with the session-aware
 relay, and restores it during cleanup. Stopping UU therefore does not silently

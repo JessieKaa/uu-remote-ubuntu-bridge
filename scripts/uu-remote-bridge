@@ -4,6 +4,7 @@ set -Eeuo pipefail
 
 bridge_user="${USER:-$(id -un)}"
 bridge_display="${UURB_DISPLAY:-auto}"
+desktop_target="${UURB_DESKTOP_TARGET:-auto}"
 rdp_port="${UURB_RDP_PORT:-3390}"
 resolution="${UURB_RESOLUTION:-1920x1080}"
 grd_fd_restart_threshold="${UURB_GRD_FD_RESTART_THRESHOLD:-4096}"
@@ -25,7 +26,11 @@ systemctl_user=(
     /usr/bin/systemctl --user
 )
 
-if [[ "$bridge_display" != auto &&
+if [[ "$desktop_target" != auto &&
+      "$desktop_target" != xrdp &&
+      "$desktop_target" != physical &&
+      ! "$desktop_target" =~ ^:(0|[1-9][0-9]{0,2})(\.0)?$ ]] ||
+   [[ "$bridge_display" != auto &&
       ! "$bridge_display" =~ ^:(0|[1-9][0-9]{0,2})$ ]] ||
    [[ ! "$rdp_port" =~ ^[1-9][0-9]{0,4}$ ]] ||
    [[ ! "$resolution" =~ ^[1-9][0-9]{2,4}x[1-9][0-9]{2,4}$ ]] ||
@@ -43,7 +48,7 @@ if [[ "$bridge_display" != auto &&
    [[ "$cursor_size_setting" != auto &&
       ! "$cursor_size_setting" =~ ^[0-9]{1,3}$ ]] ||
    [[ "$wine_prefix" != /* ]]; then
-    printf 'Invalid UURB display, RDP port, resolution, descriptor, keyboard, network, cursor, or prefix setting.\n' >&2
+    printf 'Invalid UURB desktop target, display, RDP port, resolution, descriptor, keyboard, network, cursor, or prefix setting.\n' >&2
     exit 2
 fi
 resolution_width="${resolution%x*}"
@@ -142,6 +147,9 @@ desktop_display=""
 desktop_wayland=""
 desktop_session_type=""
 desktop_xauthority=""
+desktop_session_id=""
+desktop_session_service=""
+desktop_session_seat=""
 active_network_interface=""
 active_keyboard_route="rdp"
 cursor_size=""
@@ -388,11 +396,63 @@ refresh_manager_environment() {
     manager_bus="${value:-$manager_bus}"
 }
 
+normalized_x_display() {
+    local display="$1"
+
+    printf '%s\n' "${display%%.*}"
+}
+
+desktop_candidate_matches_target() {
+    local candidate_display="$1"
+    local candidate_service="$2"
+    local candidate_seat="$3"
+    local candidate_bus="$4"
+    local normalized_candidate
+    local normalized_manager
+    local normalized_target
+
+    case "$desktop_target" in
+        xrdp)
+            [[ "$candidate_service" == xrdp-sesman ]]
+            ;;
+        physical)
+            normalized_candidate="$(normalized_x_display "$candidate_display")"
+            normalized_manager="$(normalized_x_display "$manager_display")"
+            [[ -n "$candidate_seat" || "$candidate_service" == gdm-* ||
+               ( "$candidate_bus" == "$manager_bus" &&
+                 -n "$manager_display" &&
+                 "$normalized_candidate" == "$normalized_manager" ) ]]
+            ;;
+        :*)
+            normalized_candidate="$(normalized_x_display "$candidate_display")"
+            normalized_target="$(normalized_x_display "$desktop_target")"
+            [[ -n "$candidate_display" &&
+               "$normalized_candidate" == "$normalized_target" ]]
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+select_desktop_candidate() {
+    desktop_bus="$1"
+    desktop_display="$2"
+    desktop_wayland="$3"
+    desktop_session_type="$4"
+    desktop_xauthority="$5"
+    desktop_session_id="$6"
+    desktop_session_service="$7"
+    desktop_session_seat="$8"
+}
+
 discover_desktop_session() {
     local candidate_bus
     local candidate_display
     local candidate_session_type
     local candidate_session_id
+    local candidate_session_service
+    local candidate_session_seat
     local candidate_state
     local candidate_wayland
     local candidate_xauthority
@@ -401,6 +461,9 @@ discover_desktop_session() {
     local fallback_session_type=""
     local fallback_wayland=""
     local fallback_xauthority=""
+    local fallback_session_id=""
+    local fallback_session_service=""
+    local fallback_session_seat=""
     local pid
 
     # The user service can start before GDM imports the graphical session
@@ -416,6 +479,8 @@ discover_desktop_session() {
         candidate_xauthority="$(process_environment_value XAUTHORITY "$pid")"
         candidate_session_type="$(process_environment_value \
             XDG_SESSION_TYPE "$pid")"
+        candidate_session_service=""
+        candidate_session_seat=""
         [[ -n "$candidate_bus" ]] || continue
         if [[ "$candidate_bus" == "$manager_bus" ]]; then
             candidate_display="${candidate_display:-$manager_display}"
@@ -436,6 +501,28 @@ discover_desktop_session() {
             )"
             [[ "$candidate_state" == active || \
                "$candidate_state" == online ]] || continue
+            candidate_session_service="$(
+                /usr/bin/loginctl show-session "$candidate_session_id" \
+                    --property=Service --value 2>/dev/null || true
+            )"
+            candidate_session_seat="$(
+                /usr/bin/loginctl show-session "$candidate_session_id" \
+                    --property=Seat --value 2>/dev/null || true
+            )"
+        fi
+
+        if [[ "$desktop_target" != auto ]]; then
+            if desktop_candidate_matches_target \
+                "$candidate_display" "$candidate_session_service" \
+                "$candidate_session_seat" "$candidate_bus"; then
+                select_desktop_candidate \
+                    "$candidate_bus" "$candidate_display" \
+                    "$candidate_wayland" "$candidate_session_type" \
+                    "$candidate_xauthority" "$candidate_session_id" \
+                    "$candidate_session_service" "$candidate_session_seat"
+                return 0
+            fi
+            continue
         fi
 
         if [[ -z "$fallback_bus" ]]; then
@@ -444,24 +531,27 @@ discover_desktop_session() {
             fallback_wayland="$candidate_wayland"
             fallback_session_type="$candidate_session_type"
             fallback_xauthority="$candidate_xauthority"
+            fallback_session_id="$candidate_session_id"
+            fallback_session_service="$candidate_session_service"
+            fallback_session_seat="$candidate_session_seat"
         fi
         if [[ -n "$manager_display" && \
               "$candidate_display" == "$manager_display" ]]; then
-            desktop_bus="$candidate_bus"
-            desktop_display="$candidate_display"
-            desktop_wayland="$candidate_wayland"
-            desktop_session_type="$candidate_session_type"
-            desktop_xauthority="$candidate_xauthority"
+            select_desktop_candidate \
+                "$candidate_bus" "$candidate_display" \
+                "$candidate_wayland" "$candidate_session_type" \
+                "$candidate_xauthority" "$candidate_session_id" \
+                "$candidate_session_service" "$candidate_session_seat"
             return 0
         fi
     done < <(/usr/bin/pgrep -u "$UID" -x gnome-shell | /usr/bin/sort -nr)
 
     if [[ -n "$fallback_bus" ]]; then
-        desktop_bus="$fallback_bus"
-        desktop_display="$fallback_display"
-        desktop_wayland="$fallback_wayland"
-        desktop_session_type="$fallback_session_type"
-        desktop_xauthority="$fallback_xauthority"
+        select_desktop_candidate \
+            "$fallback_bus" "$fallback_display" "$fallback_wayland" \
+            "$fallback_session_type" "$fallback_xauthority" \
+            "$fallback_session_id" "$fallback_session_service" \
+            "$fallback_session_seat"
         return 0
     fi
     return 1
@@ -470,13 +560,17 @@ discover_desktop_session() {
 start_desktop_relay() {
     local -a desktop_environment
     local native_openssl_modules
+    local selected_desktop
 
     if ! discover_desktop_session; then
-        log 'Waiting for a logged-in GNOME desktop session.'
+        log "Waiting for logged-in GNOME desktop target '$desktop_target'."
         until discover_desktop_session; do
             sleep 5
         done
     fi
+
+    selected_desktop="${desktop_display:-$desktop_wayland}"
+    log "Desktop target '$desktop_target' selected ${desktop_session_service:-unknown} session ${desktop_session_id:-unknown} on ${selected_desktop:-unknown}."
 
     native_openssl_modules="$(
         /usr/bin/openssl version -m | /usr/bin/sed -n \

@@ -516,6 +516,33 @@ GNOME Desktop Sharing is relaying x11 :10.0.
 The launcher reads this from the live `gnome-shell` process. Do not hard-code
 an old `/tmp/dbus-*` address; it changes after logout or reboot.
 
+## UU opens a clean desktop instead of the existing XRDP desktop
+
+Two GNOME sessions are alive and automatic discovery selected the physical/GDM
+session (commonly `:0`) while the useful windows remain in an XRDP session
+(commonly `:10` or `:11`). Confirm their identities without restarting either
+desktop:
+
+```bash
+loginctl list-sessions
+pgrep -a gnome-shell
+journalctl --user -u uu-remote-bridge.service -n 30 --no-pager
+```
+
+Pin the session by type rather than by its temporary display number:
+
+```bash
+./install.sh --skip-packages --skip-account-login \
+  --desktop-target xrdp
+```
+
+The journal must identify `xrdp-sesman` and the current XRDP display. When no
+XRDP desktop exists, the bridge waits; it does not fall back to the physical
+desktop. This operation restarts only the UU bridge. It must not restart
+`xrdp`, `xrdp-sesman`, GDM, GNOME Shell, or the applications being shared.
+Restore historical automatic selection with `--desktop-target auto`, or
+select the physical seat with `--desktop-target physical`.
+
 ## Service is active but UU stays offline after its server exits
 
 Current versions treat a missing `GameViewerServer.exe` lasting ten seconds,

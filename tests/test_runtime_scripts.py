@@ -156,6 +156,25 @@ class RuntimeScriptTests(unittest.TestCase):
             launcher,
         )
 
+    def test_desktop_target_can_pin_the_existing_xrdp_session(self):
+        launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
+        verifier = (REPOSITORY / "scripts" / "verify.sh").read_text()
+
+        self.assertIn('desktop_target="${UURB_DESKTOP_TARGET:-auto}"', launcher)
+        self.assertIn("--property=Service --value", launcher)
+        self.assertIn('[[ "$candidate_service" == xrdp-sesman ]]', launcher)
+        self.assertIn('"$candidate_bus" == "$manager_bus"', launcher)
+        self.assertIn('[[ "$desktop_target" != auto ]]', launcher)
+        self.assertLess(
+            launcher.index('if [[ "$desktop_target" != auto ]]'),
+            launcher.index('if [[ -z "$fallback_bus" ]]'),
+        )
+        self.assertIn(
+            "Waiting for logged-in GNOME desktop target '$desktop_target'",
+            launcher,
+        )
+        self.assertIn("expected an XRDP session", verifier)
+
     def test_runtime_settings_are_persistent_and_collision_safe(self):
         installer = (REPOSITORY / "install.sh").read_text()
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
@@ -168,6 +187,7 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("UURB_RDP_PORT=%s", installer)
         self.assertIn("UURB_RESOLUTION=%s", installer)
         self.assertIn("UURB_DISPLAY=%s", installer)
+        self.assertIn("UURB_DESKTOP_TARGET=%s", installer)
         self.assertIn("UURB_GRD_FD_RESTART_THRESHOLD=%s", installer)
         self.assertIn("UURB_TEXT_KEY_DELAY_MS=%s", installer)
         self.assertIn("UURB_PHYSICAL_KEY_DELAY_MS=%s", installer)
@@ -178,6 +198,11 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("resolve_text_key_delay", installer)
         self.assertIn("EnvironmentFile=-%h/.config/uu-remote-bridge/environment", unit)
         self.assertIn('bridge_display="${UURB_DISPLAY:-auto}"', launcher)
+        self.assertIn(
+            'desktop_target="${UURB_DESKTOP_TARGET:-auto}"',
+            launcher,
+        )
+        self.assertIn("--desktop-target", installer)
         self.assertIn(
             'grd_fd_restart_threshold="${UURB_GRD_FD_RESTART_THRESHOLD:-4096}"',
             launcher,
@@ -221,6 +246,7 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn('export WINEPREFIX="$wine_prefix"', launcher)
         self.assertIn("/tmp/.X11-unix/X$display_number", launcher)
         self.assertIn("saved_setting UURB_RDP_PORT", verifier)
+        self.assertIn("saved_setting UURB_DESKTOP_TARGET", verifier)
         self.assertIn("restore_bridge_after_failure", installer)
         self.assertLess(
             installer.index('port_listener="$('),

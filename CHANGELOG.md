@@ -8,6 +8,8 @@ locked by the release manifest.
 
 ### Added
 
+- persistent `auto`, `xrdp`, `physical`, and exact-display desktop targeting;
+  explicit targets wait instead of falling back to a different GNOME session
 - opt-in daily official-release checks and a 15-minute health monitor that
   persist across reboot without periodically restarting a healthy bridge
 - resumable Codex repair workspaces using explicit `codex-auto-review` and
@@ -62,6 +64,8 @@ locked by the release manifest.
 
 ### Documentation
 
+- document why a multi-session host can show an empty UU desktop and how to
+  bind UU to the existing XRDP desktop without restarting or logging it out
 - document automatic maintenance, Codex resume state, reboot behavior, track
   selection, another-computer handoff, and the remaining approval boundary
 - distinguish a smaller XRDP source that leaves white space from a larger XRDP
@@ -74,6 +78,8 @@ locked by the release manifest.
 
 ### Fixed
 
+- prevent UU from silently switching from a long-lived XRDP desktop to a new
+  physical/GDM desktop when the systemd user-manager display changes
 - reject a mismatched live X11 desktop/private UU canvas during verification,
   so top-left-only video with black right or bottom space is diagnosed from
   geometry instead of passing an otherwise healthy runtime check

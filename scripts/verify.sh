@@ -67,6 +67,8 @@ saved_rdp_port="$(saved_setting UURB_RDP_PORT)"
 rdp_port="${UURB_RDP_PORT:-${saved_rdp_port:-3390}}"
 saved_resolution="$(saved_setting UURB_RESOLUTION)"
 resolution="${UURB_RESOLUTION:-${saved_resolution:-1920x1080}}"
+saved_desktop_target="$(saved_setting UURB_DESKTOP_TARGET)"
+desktop_target="${UURB_DESKTOP_TARGET:-${saved_desktop_target:-auto}}"
 saved_keyboard_route="$(saved_setting UURB_KEYBOARD_ROUTE)"
 keyboard_route="${UURB_KEYBOARD_ROUTE:-${saved_keyboard_route:-rdp}}"
 saved_cursor_guard="$(saved_setting UURB_CURSOR_GUARD)"
@@ -156,6 +158,51 @@ process_environment_value() {
         /usr/bin/sed -n "s/^${name}=//p" | /usr/bin/head -n 1
 }
 
+normalized_x_display() {
+    local display="$1"
+
+    printf '%s\n' "${display%%.*}"
+}
+
+gnome_session_for_bus() {
+    local desktop_bus="$1"
+    local candidate_bus
+    local candidate_display
+    local candidate_service
+    local candidate_session_id
+    local candidate_seat
+    local pid
+
+    [[ -n "$desktop_bus" ]] || return 1
+    while read -r pid; do
+        [[ -n "$pid" ]] || continue
+        candidate_bus="$(
+            process_environment_value DBUS_SESSION_BUS_ADDRESS "$pid" || true
+        )"
+        [[ "$candidate_bus" == "$desktop_bus" ]] || continue
+        candidate_session_id="$(
+            /usr/bin/sed -n \
+                's#.*session-\([^/]*\)\.scope.*#\1#p' \
+                "/proc/$pid/cgroup" 2>/dev/null | /usr/bin/head -n 1
+        )"
+        candidate_service="$(
+            /usr/bin/loginctl show-session "$candidate_session_id" \
+                --property=Service --value 2>/dev/null || true
+        )"
+        candidate_seat="$(
+            /usr/bin/loginctl show-session "$candidate_session_id" \
+                --property=Seat --value 2>/dev/null || true
+        )"
+        candidate_display="$(
+            process_environment_value DISPLAY "$pid" || true
+        )"
+        printf '%s|%s|%s|%s\n' "$candidate_session_id" \
+            "$candidate_service" "$candidate_seat" "$candidate_display"
+        return 0
+    done < <(/usr/bin/pgrep -u "$UID" -x gnome-shell | /usr/bin/sort -nr)
+    return 1
+}
+
 display_geometry() {
     local display="$1"
     local xauthority="${2:-}"
@@ -214,6 +261,13 @@ fail() {
     printf 'FAIL  %s\n' "$1" >&2
     errors=$((errors + 1))
 }
+
+if [[ "$desktop_target" != auto &&
+      "$desktop_target" != xrdp &&
+      "$desktop_target" != physical &&
+      ! "$desktop_target" =~ ^:(0|[1-9][0-9]{0,2})(\.0)?$ ]]; then
+    fail "invalid saved desktop target: $desktop_target"
+fi
 
 for _ in {1..180}; do
     if bridge_service_active && \
@@ -452,6 +506,48 @@ else
 fi
 
 grd_pid="$(grd_pid_for_port)"
+if [[ -n "$grd_pid" ]]; then
+    relay_bus="$(
+        process_environment_value DBUS_SESSION_BUS_ADDRESS "$grd_pid" || true
+    )"
+    relay_display="$(
+        process_environment_value DISPLAY "$grd_pid" || true
+    )"
+    relay_session="$(gnome_session_for_bus "$relay_bus" || true)"
+    IFS='|' read -r relay_session_id relay_session_service relay_session_seat \
+        relay_shell_display <<<"$relay_session"
+    case "$desktop_target" in
+        auto)
+            pass "GNOME RDP relay targets ${relay_session_service:-an active GNOME} session ${relay_session_id:-unknown} on ${relay_display:-unknown}"
+            ;;
+        xrdp)
+            if [[ "$relay_session_service" == xrdp-sesman ]]; then
+                pass "GNOME RDP relay is pinned to XRDP session $relay_session_id on ${relay_display:-unknown}"
+            else
+                fail "GNOME RDP relay target is ${relay_session_service:-unclassified}, expected an XRDP session"
+            fi
+            ;;
+        physical)
+            if [[ -n "$relay_session_seat" ||
+                  "$relay_session_service" == gdm-* ||
+                  "$relay_bus" == "unix:path=${XDG_RUNTIME_DIR:-/run/user/$UID}/bus" ]]; then
+                pass "GNOME RDP relay is pinned to physical session $relay_session_id on ${relay_display:-unknown}"
+            else
+                fail "GNOME RDP relay target is ${relay_session_service:-unclassified}, expected a physical session"
+            fi
+            ;;
+        :*)
+            if [[ "$(normalized_x_display "$relay_display")" ==
+                  "$(normalized_x_display "$desktop_target")" ]]; then
+                pass "GNOME RDP relay is pinned to X display $relay_display"
+            else
+                fail "GNOME RDP relay uses ${relay_display:-no X display}, expected $desktop_target"
+            fi
+            ;;
+    esac
+else
+    fail 'GNOME RDP relay process could not be identified for desktop-target verification'
+fi
 saved_grd_fd_restart_threshold="$(
     saved_setting UURB_GRD_FD_RESTART_THRESHOLD
 )"

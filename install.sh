@@ -47,6 +47,7 @@ saved_setting() {
 saved_rdp_port="$(saved_setting UURB_RDP_PORT)"
 saved_resolution="$(saved_setting UURB_RESOLUTION)"
 saved_display="$(saved_setting UURB_DISPLAY)"
+saved_desktop_target="$(saved_setting UURB_DESKTOP_TARGET)"
 saved_grd_fd_restart_threshold="$(
     saved_setting UURB_GRD_FD_RESTART_THRESHOLD
 )"
@@ -61,6 +62,7 @@ saved_console_web_port="$(saved_setting UURB_CONSOLE_WEB_PORT)"
 rdp_port="${UURB_RDP_PORT:-${saved_rdp_port:-3390}}"
 resolution="${UURB_RESOLUTION:-${saved_resolution:-1920x1080}}"
 bridge_display="${UURB_DISPLAY:-${saved_display:-auto}}"
+desktop_target="${UURB_DESKTOP_TARGET:-${saved_desktop_target:-auto}}"
 grd_fd_restart_threshold="${UURB_GRD_FD_RESTART_THRESHOLD:-${saved_grd_fd_restart_threshold:-4096}}"
 text_key_delay_ms="$(resolve_text_key_delay \
     "$environment_file" "$saved_text_key_delay_ms")"
@@ -91,6 +93,9 @@ usage: ./install.sh [options]
   --rdp-port PORT        local GNOME RDP relay port (default: 3390)
   --resolution WxH       relay resolution (default: 1920x1080)
   --display auto|:N      private X display (default: first free from :20)
+  --desktop-target TARGET
+                         shared GNOME desktop: auto, xrdp, physical, or :N
+                         (default: auto; explicit targets never fall back)
   --grd-fd-restart-threshold N
                          restart before GNOME RDP exhausts descriptors
                          (default: 4096; 0 disables the guard)
@@ -145,6 +150,10 @@ while (($#)); do
             ;;
         --display)
             bridge_display="${2:?--display requires auto or :N}"
+            shift 2
+            ;;
+        --desktop-target)
+            desktop_target="${2:?--desktop-target requires auto, xrdp, physical, or :N}"
             shift 2
             ;;
         --grd-fd-restart-threshold)
@@ -263,6 +272,13 @@ fi
 if [[ "$bridge_display" != auto &&
       ! "$bridge_display" =~ ^:(0|[1-9][0-9]{0,2})$ ]]; then
     printf 'The private display must be auto or an X display such as :20.\n' >&2
+    exit 2
+fi
+if [[ "$desktop_target" != auto &&
+      "$desktop_target" != xrdp &&
+      "$desktop_target" != physical &&
+      ! "$desktop_target" =~ ^:(0|[1-9][0-9]{0,2})(\.0)?$ ]]; then
+    printf 'The desktop target must be auto, xrdp, physical, or an X display such as :11.\n' >&2
     exit 2
 fi
 if [[ ! "$grd_fd_restart_threshold" =~ ^[0-9]+$ ]] ||
@@ -675,6 +691,7 @@ environment_tmp="$(mktemp "$config_dir/.environment.XXXXXX")"
 printf 'UURB_RDP_PORT=%s\n' "$rdp_port" >"$environment_tmp"
 printf 'UURB_RESOLUTION=%s\n' "$resolution" >>"$environment_tmp"
 printf 'UURB_DISPLAY=%s\n' "$bridge_display" >>"$environment_tmp"
+printf 'UURB_DESKTOP_TARGET=%s\n' "$desktop_target" >>"$environment_tmp"
 printf 'UURB_GRD_FD_RESTART_THRESHOLD=%s\n' \
     "$grd_fd_restart_threshold" >>"$environment_tmp"
 printf 'UURB_TEXT_KEY_DELAY_MS=%s\n' \

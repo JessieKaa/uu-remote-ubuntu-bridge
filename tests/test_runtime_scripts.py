@@ -143,6 +143,19 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("/audio-mode:2", launcher)
         self.assertNotIn("/audio-mode:0", launcher)
 
+    def test_uu_audio_can_be_disabled_without_changing_other_wine_prefixes(self):
+        launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
+
+        self.assertIn('uu_audio_setting="${UURB_UU_AUDIO:-system}"', launcher)
+        self.assertIn('[[ "$uu_audio_setting" != system', launcher)
+        self.assertIn("winepulse.drv=d;winedbg.exe=d", launcher)
+        self.assertIn(
+            "export WINEDLLOVERRIDES='winedbg.exe=d;mscoree,mshtml='",
+            launcher,
+        )
+        self.assertNotIn("systemctl --user restart pipewire", launcher)
+        self.assertNotIn("systemctl --user restart wireplumber", launcher)
+
     def test_physical_session_uses_manager_display_fallback(self):
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
 

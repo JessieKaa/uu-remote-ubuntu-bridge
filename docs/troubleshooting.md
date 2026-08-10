@@ -583,8 +583,11 @@ this changed the physical S/PDIF node from running to idle while SHI, UU,
 XRDP, GNOME Shell, and every window remained running.
 
 The durable Unreal-side fix is to launch remote previews with its supported
-`-nosound` option. Keep `-enablesound` as an explicit listening override. Do
-not add a polling daemon or a global WirePlumber mute rule for this symptom.
+`-nosound` option. Keep `-enablesound` as an explicit listening override. A
+single launcher edit is not sufficient when a build pipeline regenerates new
+review directories: identify every live `SHI` stream, and make the generated
+launch command carry `-NoSound`. Do not add a polling daemon or a global
+WirePlumber mute rule for this symptom.
 
 That first diagnosis was valid for that stream graph, but it was not the whole
 incident. After the UU bridge restarted at 22:58, `wpctl status` showed two
@@ -632,6 +635,42 @@ The environment applies on its next normal restart. On the validated host,
 the live reroute caused both UU audio streams to close, stopped the overrun
 log at 23:17:18, suspended the webcam source, and left the physical output
 idle. UU, XRDP, GNOME Shell, and open windows remained alive.
+
+Digital mute is not the same as closing the device. Two subsequently generated
+SHI review builds remained linked to the S/PDIF endpoint while their restored
+stream mute was on, leaving ALSA `pcm2p` in `RUNNING`. Route those exact
+streams away from the physical sink. On hardware that keeps an idle USB S/PDIF
+clock active, an exact-device WirePlumber rule may set `node.pause-on-idle` to
+`true` and a short `session.suspend-timeout-seconds`; do not apply that rule to
+all sound devices. The acceptance check is:
+
+```bash
+cat /proc/asound/card*/pcm*p/sub*/status
+fuser -v /dev/snd/*
+```
+
+The affected playback PCM must say `closed`, not merely `SUSPENDED`, muted, or
+idle in a desktop mixer.
+
+Finally, UU's own log showed that every controller connection still invoked
+`startAudioCapture`, even after its stream was muted and the physical PCM was
+closed. A host that does not need audio through UU can prevent that proprietary
+WebRTC path from opening by disabling Wine PulseAudio only in this dedicated
+prefix:
+
+```ini
+# ~/.config/systemd/user/uu-remote-bridge.service.d/20-audio-isolation.conf
+[Service]
+Environment="UURB_UU_AUDIO=off"
+Environment="PULSE_SINK=xrdp-sink"
+Environment="PULSE_SOURCE=xrdp-source"
+```
+
+Then run `systemctl --user daemon-reload` and restart only
+`uu-remote-bridge.service` during a disconnected UU window. The bridge maps
+`off` to `winepulse.drv=d` in its own Wine process. It does not disable normal
+Ubuntu, browser, XRDP, or other Wine-prefix audio. `UURB_UU_AUDIO=system` is
+the compatibility default and restores UU's former audio behavior.
 
 ## Service is active but UU stays offline after its server exits
 

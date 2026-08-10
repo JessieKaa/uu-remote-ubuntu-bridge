@@ -8,6 +8,9 @@ locked by the release manifest.
 
 ### Added
 
+- an opt-in `UURB_UU_AUDIO=off` boundary that disables Wine PulseAudio only
+  inside UU's dedicated prefix when a controller must never open UU's WebRTC
+  capture channel; the compatibility default remains `system`
 - persistent `auto`, `xrdp`, `physical`, and exact-display desktop targeting;
   explicit targets wait instead of falling back to a different GNOME session
 - opt-in daily official-release checks and a 15-minute health monitor that
@@ -64,6 +67,8 @@ locked by the release manifest.
 
 ### Documentation
 
+- distinguish digital mute from a genuinely closed ALSA PCM, cover regenerated
+  SHI review builds, and document the final prefix-scoped UU audio cutoff
 - distinguish UU's audio-disabled internal RDP relay from an unrelated SDL
   application holding a physical PipeWire sink open, with a scoped diagnosis
   and Unreal `-nosound` recovery path; also document the later Wine UU

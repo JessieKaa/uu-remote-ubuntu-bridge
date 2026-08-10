@@ -652,3 +652,43 @@ Future release acceptance must include a genuinely stopped-prefix cold start
 and fresh signaling-room evidence. A warm process check can prove that an
 already-running relay survived; it cannot prove that startup-only driver and
 device enumeration will finish.
+
+## 19. Separate device visibility from a connectable media session
+
+The host later appeared in every UU controller, but selecting it waited
+forever. This was not another route-selection failure: the server log showed a
+real controller participant and peer states 1 through 3. It then stopped at
+playout initialization, before a usable media path or connected device entry.
+
+Three bounded audio experiments localized the failure:
+
+1. Forcing `PULSE_SINK=xrdp-sink` and `PULSE_SOURCE=xrdp-source` left Wine
+   enumerating duplicate stale XRDP nodes and prevented signaling startup.
+2. `UURB_UU_AUDIO=off` removed every GameViewer PipeWire stream and restored
+   host visibility, but an actual controller stopped at
+   `AudioDeviceModuleImpl::InitPlayout`.
+3. Wine ALSA pointed at a private `type null` playback/capture namespace. Both
+   media factories initialized immediately, signaling connected, and the room
+   reached `created`, while `wpctl status` and `/proc/asound` showed no UU
+   access to the speaker, webcam microphone, or another physical PCM.
+
+The resulting boundary is prefix- and service-scoped: disable `winepulse.drv`,
+select Wine's ALSA driver only in the UU prefix, and set `ALSA_CONFIG_PATH` only
+for `uu-remote-bridge.service`. Do not alter global ALSA defaults or restart
+PipeWire, WirePlumber, XRDP, GDM, or GNOME.
+
+A second defect appeared during the same cold-start work. The bootstrap helper
+minimized UU's layered Wine/Qt management window while Qt was replacing its
+top-level X windows. `xdotool` received `BadWindow`, the GUI IPC client closed,
+and the server destroyed the newly created signaling room. Keeping that window
+mapped behind the supervised full-screen relay removed the race. Hiding a
+management window is cosmetic; preserving its IPC lifetime is functional.
+
+The complete acceptance boundary is deliberately stronger than “the device is
+online”:
+
+- both `create pc factory ... success` records occur;
+- signaling reports success and the room reports `created`;
+- a fresh controller participant reaches peer states 1 through 3;
+- media initialization returns and video capture starts; and
+- no GameViewer stream or physical PCM appears when silent audio is selected.

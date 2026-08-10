@@ -256,7 +256,9 @@ refresh_updater_runtime() {
 
 backup_paths=(
     "$HOME/.config/uu-remote-bridge/environment"
+    "$HOME/.config/uu-remote-bridge/alsa-null.conf"
     "$HOME/.config/systemd/user/uu-remote-bridge.service"
+    "$HOME/.config/systemd/user/uu-remote-bridge.service.d"
     "$HOME/.config/systemd/user/uu-remote-console.service"
     "$HOME/.config/systemd/user/uu-keyring-unlock.service"
     "$HOME/.local/bin/uu-agent"

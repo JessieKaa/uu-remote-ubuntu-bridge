@@ -647,9 +647,8 @@ idle in a desktop mixer.
 
 Finally, UU's own log showed that every controller connection still invoked
 `startAudioCapture`, even after its stream was muted and the physical PCM was
-closed. A host that does not need audio through UU can prevent that proprietary
-WebRTC path from opening by disabling Wine PulseAudio only in this dedicated
-prefix:
+closed. Disabling Wine PulseAudio only in this dedicated prefix prevents UU
+from opening PipeWire or a physical ALSA device:
 
 ```ini
 # ~/.config/systemd/user/uu-remote-bridge.service.d/20-audio-isolation.conf
@@ -657,14 +656,57 @@ prefix:
 Environment="UURB_UU_AUDIO=off"
 ```
 
-Then run `systemctl --user daemon-reload` and restart only
-`uu-remote-bridge.service` during a disconnected UU window. The bridge maps
-`off` to `winepulse.drv=d` in its own Wine process. It does not disable normal
-Ubuntu, browser, XRDP, or other Wine-prefix audio. `UURB_UU_AUDIO=system` is
-the compatibility default and restores UU's former audio behavior. On the
-validated host, `off` completed both WebRTC media factories, connected the
-signal server, reached `room_state_changed: created`, advertised the device as
-`CONNECTED`, and left no UU PipeWire stream attached to a physical device.
+The bridge maps `off` to `winepulse.drv=d` in its own Wine process. It does not
+disable normal Ubuntu, browser, XRDP, or other Wine-prefix audio.
+
+Do not stop at device visibility. In the 2026-08-10 incident, `off` alone let
+the host advertise itself and accept a controller participant, but the
+controller waited forever. The streamer stopped at
+`AudioDeviceModuleImpl::InitPlayout`; ICE and video capture never started. UU
+therefore requires a usable audio abstraction even when the operator wants no
+sound.
+
+Give only this Wine prefix a silent ALSA namespace. The repository includes a
+reviewed template:
+
+```bash
+install -d -m 0700 ~/.config/uu-remote-bridge
+install -m 0600 config/alsa-null.conf \
+  ~/.config/uu-remote-bridge/alsa-null.conf
+
+WINEPREFIX="$HOME/.local/share/wineprefixes/uu-remote" \
+  /opt/wine-stable/bin/wine reg add \
+  'HKCU\Software\Wine\Drivers' /v Audio /t REG_SZ /d alsa /f
+```
+
+Extend the same service drop-in without adding global ALSA or PipeWire state:
+
+```ini
+[Service]
+Environment="UURB_UU_AUDIO=off"
+Environment="ALSA_CONFIG_PATH=/home/USER/.config/uu-remote-bridge/alsa-null.conf"
+```
+
+Run `systemctl --user daemon-reload`, then restart only
+`uu-remote-bridge.service` during a disconnected UU window. The validated cold
+start completed both peer-connection factories in milliseconds, connected
+signaling, reached `room_state_changed: created`, advertised the device as
+`CONNECTED`, and left no GameViewer stream in `wpctl status` or physical PCM
+in `/proc/asound`. The exact acceptance sequence for a new controller includes
+peer states 1 through 3, successful media initialization, and video capture;
+room creation alone is not sufficient.
+
+`UURB_UU_AUDIO=system` is the compatibility default. To undo the silent
+fallback, remove the drop-in and delete only this prefix's explicit audio
+driver value, then restart only the bridge:
+
+```bash
+WINEPREFIX="$HOME/.local/share/wineprefixes/uu-remote" \
+  /opt/wine-stable/bin/wine reg delete \
+  'HKCU\Software\Wine\Drivers' /v Audio /f
+```
+
+Do not restart PipeWire, WirePlumber, XRDP, GDM, or GNOME for this repair.
 
 ## Service is active but UU stays offline after its server exits
 

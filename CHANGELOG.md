@@ -87,14 +87,21 @@ locked by the release manifest.
 
 ### Fixed
 
+- keep UU's layered Wine/Qt login window mapped behind the focused relay;
+  minimizing it during window replacement could raise `BadWindow`, close the
+  login IPC client, and destroy an otherwise healthy signaling room
+- keep the controller's mandatory media setup alive without touching host
+  audio by pairing the prefix-scoped PulseAudio cutoff with a private ALSA
+  null playback/capture backend; `off` alone could advertise the device yet
+  leave a controller waiting forever in `InitPlayout`
 - rediscover the native VNC relay after RealVNC replaces its startup window
   while entering full-screen mode, so UU's management window cannot remain in
   front of the shared desktop
 - prevent the validated host from remaining invisible after an apparently
   successful room request: forced duplicate XRDP Pulse endpoint names stalled
-  Wine Core Audio before signaling; the host now uses the prefix-scoped
-  no-audio mode and reaches `room_state_changed: created` without physical
-  playback streams
+  Wine Core Audio before signaling; the host now reaches
+  `room_state_changed: created` through the prefix-local silent backend and
+  leaves no UU stream attached to PipeWire or a physical PCM
 - add an opt-in, loopback-only native VNC desktop relay for X11/XRDP hosts
   where nested GNOME RDP authenticates but renders a uniform black or white
   UU canvas; the RDP relay remains the compatibility default

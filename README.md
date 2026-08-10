@@ -135,10 +135,13 @@ working host automatically. The VNC fallback requires an X11 target and fails
 closed instead of creating a different desktop for Wayland.
 
 On a host where UU opens physical audio devices or stalls during Windows Core
-Audio discovery, set `UURB_UU_AUDIO=off` in a service drop-in. Do not force
-`PULSE_SINK` or `PULSE_SOURCE` to duplicated XRDP endpoint names: a successful
-room HTTP response can otherwise hide a streamer that never connects signaling.
-The no-audio setting is confined to UU's dedicated Wine prefix.
+Audio discovery, do not force `PULSE_SINK` or `PULSE_SOURCE` to duplicated
+XRDP endpoint names. `UURB_UU_AUDIO=off` prevents UU from reaching PipeWire,
+but some controllers still require a valid playout/capture backend before ICE
+can start. For that case, use the documented dedicated-prefix ALSA null
+fallback. It satisfies UU's media negotiation without opening a physical
+speaker or microphone and does not alter Ubuntu, XRDP, browsers, or another
+Wine prefix. See [Troubleshooting](docs/troubleshooting.md#physical-speakers-pulse-or-the-uu-client-receives-unwanted-sound).
 
 The process-local cursor guard is a host-specific extension and defaults to
 `off`. Enable it only when the controller loses the cursor, renders it too

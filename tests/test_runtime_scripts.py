@@ -145,6 +145,10 @@ class RuntimeScriptTests(unittest.TestCase):
 
     def test_uu_audio_can_be_disabled_without_changing_other_wine_prefixes(self):
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
+        silent_alsa = (REPOSITORY / "config" / "alsa-null.conf").read_text()
+        upgrader = (
+            REPOSITORY / "scripts" / "upgrade-uu-remote.sh"
+        ).read_text()
 
         self.assertIn('uu_audio_setting="${UURB_UU_AUDIO:-system}"', launcher)
         self.assertIn('[[ "$uu_audio_setting" != system', launcher)
@@ -153,6 +157,10 @@ class RuntimeScriptTests(unittest.TestCase):
             "export WINEDLLOVERRIDES='winedbg.exe=d;mscoree,mshtml='",
             launcher,
         )
+        self.assertIn("pcm.!default", silent_alsa)
+        self.assertIn("type null", silent_alsa)
+        self.assertIn("alsa-null.conf", upgrader)
+        self.assertIn("uu-remote-bridge.service.d", upgrader)
         self.assertNotIn("systemctl --user restart pipewire", launcher)
         self.assertNotIn("systemctl --user restart wireplumber", launcher)
 
@@ -452,6 +460,13 @@ class RuntimeScriptTests(unittest.TestCase):
             '/usr/bin/xdotool windowactivate "$relay_window_id"',
             launcher,
         )
+        bootstrap = launcher[
+            launcher.index("bootstrap_account()") : launcher.index(
+                "# UU's GUI sends the account-login IPC message"
+            )
+        ]
+        self.assertNotIn("windowminimize", bootstrap)
+        self.assertIn("terminate the GUI IPC client", bootstrap)
 
     def test_wine_launcher_exit_does_not_trigger_a_restart_storm(self):
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()

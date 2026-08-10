@@ -1126,9 +1126,11 @@ bootstrap_account() {
     /opt/wine-stable/bin/wine start /unix "$uu_app_dir/GameViewer.exe" \
         >>"$state_dir/client-bootstrap.log" 2>&1 || true
 
+    # Keep the layered Wine/Qt management window mapped. Minimizing it while
+    # its top-level windows are still being replaced can raise BadWindow,
+    # terminate the GUI IPC client, and make the server destroy its room.
+    # The relay focus supervisor safely keeps this window behind the desktop.
     sleep 1
-    /usr/bin/xdotool search --onlyvisible --name '网易UU远程' \
-        windowminimize >/dev/null 2>&1 || true
     /usr/bin/xdotool windowactivate --sync "$relay_window_id" \
         >/dev/null 2>&1 || true
 }

@@ -5,6 +5,7 @@ set -Eeuo pipefail
 bridge_user="${USER:-$(id -un)}"
 bridge_display="${UURB_DISPLAY:-auto}"
 desktop_target="${UURB_DESKTOP_TARGET:-auto}"
+desktop_relay="${UURB_DESKTOP_RELAY:-rdp}"
 rdp_port="${UURB_RDP_PORT:-3390}"
 resolution="${UURB_RESOLUTION:-1920x1080}"
 grd_fd_restart_threshold="${UURB_GRD_FD_RESTART_THRESHOLD:-4096}"
@@ -33,6 +34,7 @@ if [[ "$desktop_target" != auto &&
       ! "$desktop_target" =~ ^:(0|[1-9][0-9]{0,2})(\.0)?$ ]] ||
    [[ "$bridge_display" != auto &&
       ! "$bridge_display" =~ ^:(0|[1-9][0-9]{0,2})$ ]] ||
+   [[ "$desktop_relay" != rdp && "$desktop_relay" != vnc ]] ||
    [[ ! "$rdp_port" =~ ^[1-9][0-9]{0,4}$ ]] ||
    [[ ! "$resolution" =~ ^[1-9][0-9]{2,4}x[1-9][0-9]{2,4}$ ]] ||
    [[ ! "$grd_fd_restart_threshold" =~ ^[0-9]+$ ]] ||
@@ -51,7 +53,7 @@ if [[ "$desktop_target" != auto &&
    [[ "$cursor_size_setting" != auto &&
       ! "$cursor_size_setting" =~ ^[0-9]{1,3}$ ]] ||
    [[ "$wine_prefix" != /* ]]; then
-    printf 'Invalid UURB desktop target, display, RDP port, resolution, descriptor, keyboard, network, cursor, audio, or prefix setting.\n' >&2
+    printf 'Invalid UURB desktop target, relay, display, RDP port, resolution, descriptor, keyboard, network, cursor, audio, or prefix setting.\n' >&2
     exit 2
 fi
 resolution_width="${resolution%x*}"
@@ -147,6 +149,8 @@ xvfb_pid=""
 openbox_pid=""
 grd_pid=""
 freerdp_pid=""
+desktop_x11vnc_pid=""
+vncviewer_pid=""
 winlogon_pid=""
 input_broker_pid=""
 x11_input_pid=""
@@ -162,6 +166,7 @@ desktop_session_service=""
 desktop_session_seat=""
 active_network_interface=""
 active_keyboard_route="rdp"
+desktop_vnc_port=""
 cursor_size=""
 x11_input_port=""
 x11_input_token=""
@@ -285,7 +290,9 @@ cleanup() {
         "$input_broker_pid" \
         "$x11_input_pid" \
         "$winlogon_pid" \
+        "$vncviewer_pid" \
         "$freerdp_pid" \
+        "$desktop_x11vnc_pid" \
         "$grd_pid" \
         "$openbox_pid" \
         "$xvfb_pid"; do
@@ -301,7 +308,9 @@ cleanup() {
             "$input_broker_pid" \
             "$x11_input_pid" \
             "$winlogon_pid" \
+            "$vncviewer_pid" \
             "$freerdp_pid" \
+            "$desktop_x11vnc_pid" \
             "$grd_pid" \
             "$openbox_pid" \
             "$xvfb_pid"; do
@@ -319,7 +328,9 @@ cleanup() {
         "$input_broker_pid" \
         "$x11_input_pid" \
         "$winlogon_pid" \
+        "$vncviewer_pid" \
         "$freerdp_pid" \
+        "$desktop_x11vnc_pid" \
         "$grd_pid" \
         "$openbox_pid" \
         "$xvfb_pid"; do
@@ -569,7 +580,9 @@ discover_desktop_session() {
 
 start_desktop_relay() {
     local -a desktop_environment
+    local desktop_vnc_log
     local native_openssl_modules
+    local selected_xauthority
     local selected_desktop
 
     if ! discover_desktop_session; then
@@ -581,6 +594,65 @@ start_desktop_relay() {
 
     selected_desktop="${desktop_display:-$desktop_wayland}"
     log "Desktop target '$desktop_target' selected ${desktop_session_service:-unknown} session ${desktop_session_id:-unknown} on ${selected_desktop:-unknown}."
+
+    if [[ "$desktop_relay" == vnc ]]; then
+        if [[ "$desktop_session_type" != x11 || -z "$desktop_display" ]]; then
+            log "The VNC desktop relay requires an X11/XRDP target; selected ${desktop_session_type:-unknown}."
+            return 1
+        fi
+        selected_xauthority="$desktop_xauthority"
+        if [[ -z "$selected_xauthority" && -f "$HOME/.Xauthority" ]]; then
+            selected_xauthority="$HOME/.Xauthority"
+        fi
+        if ! /usr/bin/env DISPLAY="$desktop_display" \
+            XAUTHORITY="$selected_xauthority" \
+            /usr/bin/xdpyinfo >/dev/null 2>&1; then
+            log 'The VNC relay cannot access the selected X11 desktop.'
+            return 1
+        fi
+
+        desktop_vnc_log="$state_dir/desktop-x11vnc.log"
+        : >"$desktop_vnc_log"
+        /usr/bin/env \
+            DISPLAY="$desktop_display" \
+            XAUTHORITY="$selected_xauthority" \
+            /usr/bin/x11vnc \
+            -norc \
+            -display "$desktop_display" \
+            -auth "$selected_xauthority" \
+            -localhost \
+            -no6 \
+            -nopw \
+            -forever \
+            -shared \
+            -repeat \
+            -nobell \
+            -autoport 5922 \
+            >>"$desktop_vnc_log" 2>&1 &
+        desktop_x11vnc_pid=$!
+
+        for _ in {1..150}; do
+            if ! kill -0 "$desktop_x11vnc_pid" >/dev/null 2>&1; then
+                log 'The localhost VNC desktop relay exited during startup.'
+                return 1
+            fi
+            desktop_vnc_port="$(
+                /usr/bin/sed -n 's/^PORT=\([0-9][0-9]*\)$/\1/p' \
+                    "$desktop_vnc_log" | /usr/bin/tail -n 1
+            )"
+            if [[ "$desktop_vnc_port" =~ ^[0-9]+$ ]] &&
+               /usr/bin/ss -H -ltnp "sport = :$desktop_vnc_port" \
+                   2>/dev/null | /usr/bin/grep -q \
+                   "pid=$desktop_x11vnc_pid,"; then
+                log "Local VNC is relaying X11 $desktop_display on 127.0.0.1:$desktop_vnc_port."
+                return 0
+            fi
+            sleep 0.1
+        done
+
+        log 'The localhost VNC desktop relay did not become ready.'
+        return 1
+    fi
 
     native_openssl_modules="$(
         /usr/bin/openssl version -m | /usr/bin/sed -n \
@@ -763,8 +835,12 @@ mv "$private_display_tmp" "$private_display_file"
 /usr/bin/openbox >>"$state_dir/openbox.log" 2>&1 &
 openbox_pid=$!
 
-if [[ ! -f "$freerdp_exe" ]]; then
+if [[ "$desktop_relay" == rdp && ! -f "$freerdp_exe" ]]; then
     log 'The Windows FreeRDP client is missing from the Wine prefix.'
+    exit 1
+fi
+if [[ "$desktop_relay" == vnc && ! -x /usr/bin/vncviewer ]]; then
+    log 'The native VNC viewer is missing.'
     exit 1
 fi
 
@@ -792,29 +868,31 @@ if [[ -n "$active_network_interface" ]]; then
     fi
 fi
 
-password="$(
-    /usr/bin/env DBUS_SESSION_BUS_ADDRESS="$desktop_bus" \
-        /usr/bin/secret-tool lookup service uu-desktop-bridge \
-        username "$bridge_user" || true
-)"
-if [[ -z "$password" ]]; then
-    log 'The RDP bridge password is missing from the login keyring.'
-    exit 1
-fi
+if [[ "$desktop_relay" == rdp ]]; then
+    password="$(
+        /usr/bin/env DBUS_SESSION_BUS_ADDRESS="$desktop_bus" \
+            /usr/bin/secret-tool lookup service uu-desktop-bridge \
+            username "$bridge_user" || true
+    )"
+    if [[ -z "$password" ]]; then
+        log 'The RDP bridge password is missing from the login keyring.'
+        exit 1
+    fi
 
-tls_cert="$(/usr/bin/gsettings get \
-    org.gnome.desktop.remote-desktop.rdp tls-cert)"
-tls_cert="${tls_cert#\'}"
-tls_cert="${tls_cert%\'}"
-if [[ ! -f "$tls_cert" ]]; then
-    log 'The configured GNOME RDP TLS certificate is missing.'
-    exit 1
+    tls_cert="$(/usr/bin/gsettings get \
+        org.gnome.desktop.remote-desktop.rdp tls-cert)"
+    tls_cert="${tls_cert#\'}"
+    tls_cert="${tls_cert%\'}"
+    if [[ ! -f "$tls_cert" ]]; then
+        log 'The configured GNOME RDP TLS certificate is missing.'
+        exit 1
+    fi
+    tls_fingerprint="$(
+        /usr/bin/openssl x509 -in "$tls_cert" -outform DER | \
+            /usr/bin/sha256sum | /usr/bin/awk '{print $1}'
+    )"
+    cert_option="/cert:fingerprint:sha256:$tls_fingerprint"
 fi
-tls_fingerprint="$(
-    /usr/bin/openssl x509 -in "$tls_cert" -outform DER | \
-        /usr/bin/sha256sum | /usr/bin/awk '{print $1}'
-)"
-cert_option="/cert:fingerprint:sha256:$tls_fingerprint"
 
 /usr/bin/timeout --kill-after=1s 5s \
     /usr/bin/env WINEPREFIX="$WINEPREFIX" \
@@ -899,86 +977,141 @@ if [[ "$cursor_guard_setting" == on ]]; then
 fi
 server_pid="$(pgrep -o -u "$UID" -f 'GameViewerServer\.exe')"
 
-freerdp_mouse_options=()
-if [[ "$cursor_guard_setting" == on ]]; then
-    freerdp_mouse_options+=(/mouse:relative:off,grab:off)
-fi
-/opt/wine-stable/bin/wine "$freerdp_exe" \
-    "/v:127.0.0.1:$rdp_port" \
-    "/u:$bridge_user" \
-    /from-stdin:force \
-    "$cert_option" \
-    /sspi-module:'C:\Program Files\FreeRDP\winpr-sspi-shim.dll' \
-    /auth-pkg-list:'none,ntlm' \
-    /network:auto \
-    "/size:$resolution" \
-    /bpp:32 \
-    /gdi:sw \
-    /audio-mode:2 \
-    "${freerdp_mouse_options[@]}" \
-    /prevent-session-lock:180 \
-    /t:Ubuntu-Desktop-Relay \
-    +f \
-    -toggle-fullscreen \
-    -decorations \
-    -suppress-output \
-    +clipboard \
-    +auto-reconnect \
-    /auto-reconnect-max-retries:0 \
-    /log-level:WARN \
-    <<<"$password" >>"$state_dir/freerdp.log" 2>&1 &
-freerdp_pid=$!
-unset password
-
 relay_ready=false
-for _ in {1..300}; do
-    if /usr/bin/xdotool search --name Ubuntu-Desktop-Relay \
-        >/dev/null 2>&1; then
-        relay_ready=true
-        break
+if [[ "$desktop_relay" == rdp ]]; then
+    freerdp_mouse_options=()
+    if [[ "$cursor_guard_setting" == on ]]; then
+        freerdp_mouse_options+=(/mouse:relative:off,grab:off)
     fi
-    # Wine's Unix launcher may exit after handing the Windows process to
-    # wineserver. Its lifetime does not represent the FreeRDP client lifetime.
-    sleep 0.1
-done
+    /opt/wine-stable/bin/wine "$freerdp_exe" \
+        "/v:127.0.0.1:$rdp_port" \
+        "/u:$bridge_user" \
+        /from-stdin:force \
+        "$cert_option" \
+        /sspi-module:'C:\Program Files\FreeRDP\winpr-sspi-shim.dll' \
+        /auth-pkg-list:'none,ntlm' \
+        /network:auto \
+        "/size:$resolution" \
+        /bpp:32 \
+        /gdi:sw \
+        /audio-mode:2 \
+        "${freerdp_mouse_options[@]}" \
+        /prevent-session-lock:180 \
+        /t:Ubuntu-Desktop-Relay \
+        +f \
+        -toggle-fullscreen \
+        -decorations \
+        -suppress-output \
+        +clipboard \
+        +auto-reconnect \
+        /auto-reconnect-max-retries:0 \
+        /log-level:WARN \
+        <<<"$password" >>"$state_dir/freerdp.log" 2>&1 &
+    freerdp_pid=$!
+    unset password
 
-if [[ "$relay_ready" != true ]]; then
-    log 'FreeRDP did not create the Ubuntu desktop relay window.'
-    exit 1
-fi
-
-if [[ "$cursor_guard_setting" == on ]]; then
-    rm -f "$cursor_guard_log"
-    if ! /opt/wine-stable/bin/wine "$input_injector_exe" \
-        "$cursor_guard_windows_path" sdl-freerdp.exe \
-        >>"$state_dir/cursor-guard-injector.log" 2>&1; then
-        log 'Could not inject the FreeRDP cursor guard.'
-        exit 1
-    fi
-    cursor_guard_ready=false
-    for _ in {1..100}; do
-        if grep -q 'UU relay cursor guard active' \
-            "$cursor_guard_log" 2>/dev/null; then
-            cursor_guard_ready=true
+    for _ in {1..300}; do
+        if /usr/bin/xdotool search --name Ubuntu-Desktop-Relay \
+            >/dev/null 2>&1; then
+            relay_ready=true
             break
         fi
-        if grep -q 'UU cursor guard initialization failed' \
-            "$cursor_guard_log" 2>/dev/null; then
-            break
-        fi
-        sleep 0.05
+        # Wine's Unix launcher may exit after handing the Windows process to
+        # wineserver. Its lifetime does not represent the client lifetime.
+        sleep 0.1
     done
-    if [[ "$cursor_guard_ready" != true ]]; then
-        log 'The FreeRDP cursor guard did not initialize.'
+    if [[ "$relay_ready" != true ]]; then
+        log 'FreeRDP did not create the Ubuntu desktop relay window.'
+        exit 1
+    fi
+
+    if [[ "$cursor_guard_setting" == on ]]; then
+        rm -f "$cursor_guard_log"
+        if ! /opt/wine-stable/bin/wine "$input_injector_exe" \
+            "$cursor_guard_windows_path" sdl-freerdp.exe \
+            >>"$state_dir/cursor-guard-injector.log" 2>&1; then
+            log 'Could not inject the FreeRDP cursor guard.'
+            exit 1
+        fi
+        cursor_guard_ready=false
+        for _ in {1..100}; do
+            if grep -q 'UU relay cursor guard active' \
+                "$cursor_guard_log" 2>/dev/null; then
+                cursor_guard_ready=true
+                break
+            fi
+            if grep -q 'UU cursor guard initialization failed' \
+                "$cursor_guard_log" 2>/dev/null; then
+                break
+            fi
+            sleep 0.05
+        done
+        if [[ "$cursor_guard_ready" != true ]]; then
+            log 'The FreeRDP cursor guard did not initialize.'
+            exit 1
+        fi
+    fi
+
+    relay_window_id="$(
+        /usr/bin/xdotool search --onlyvisible \
+            --name '^Ubuntu-Desktop-Relay$' 2>/dev/null \
+            | /usr/bin/tail -n 1
+    )"
+else
+    desktop_vnc_display=$((desktop_vnc_port - 5900))
+    /usr/bin/env \
+        DBUS_SESSION_BUS_ADDRESS=unix:path=/dev/null \
+        /usr/bin/vncviewer \
+        -AllowMainClose=1 \
+        -LogToAddressBook=0 \
+        -FullScreen=1 \
+        -FullScreenHint=1 \
+        -EnableToolbar=0 \
+        -AcceptBell=0 \
+        -AudioVolume=0 \
+        -WarnUnencrypted=0 \
+        -VerifyId=0 \
+        -Shared=1 \
+        -Scaling=Fit \
+        -DynamicResolution=0 \
+        -GrabKeyboard=0 \
+        -SendKeyEvents=1 \
+        -SendPointerEvents=1 \
+        -MenuKey= \
+        -UpdateScreenshot=0 \
+        -ShowSplash=0 \
+        -EnableAnalytics=0 \
+        -ShareFiles=0 \
+        -EnableRemotePrinting=0 \
+        -ChangeServerDefaultPrinter=0 \
+        "127.0.0.1:$desktop_vnc_display" \
+        >>"$state_dir/vncviewer-relay.log" 2>&1 &
+    vncviewer_pid=$!
+
+    for _ in {1..300}; do
+        relay_window_id="$(
+            {
+                /usr/bin/xdotool search --onlyvisible \
+                    --pid "$vncviewer_pid" \
+                    --name '^127\.0\.0\.1:.* - RealVNC Viewer$' \
+                    2>/dev/null || true
+            } | /usr/bin/tail -n 1
+        )"
+        if [[ -n "$relay_window_id" ]]; then
+            relay_ready=true
+            break
+        fi
+        if ! kill -0 "$vncviewer_pid" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 0.1
+    done
+    if [[ "$relay_ready" != true ]]; then
+        log 'The VNC viewer did not create the Ubuntu desktop relay window.'
         exit 1
     fi
 fi
 
-relay_window_id="$(
-    /usr/bin/xdotool search --onlyvisible \
-        --name '^Ubuntu-Desktop-Relay$' 2>/dev/null \
-        | /usr/bin/tail -n 1
-)"
 if [[ -z "$relay_window_id" ]]; then
     log 'Could not identify the Ubuntu desktop relay window.'
     exit 1
@@ -1088,21 +1221,26 @@ supervise_server() {
 supervise_server "$server_pid" &
 server_supervisor_pid=$!
 
-log "UU Remote and the Windows RDP relay share DISPLAY=$DISPLAY; physical keyboard route=$active_keyboard_route."
+log "UU Remote and the $desktop_relay desktop relay share DISPLAY=$DISPLAY; physical keyboard route=$active_keyboard_route."
 
 set +e
 critical_pids=(
     "$xvfb_pid"
     "$openbox_pid"
-    "$grd_pid"
-    "$freerdp_pid"
     "$winlogon_pid"
     "$input_broker_pid"
     "$server_supervisor_pid"
 )
-if [[ -n "$x11_input_pid" ]]; then
-    critical_pids+=("$x11_input_pid")
-fi
+for optional_pid in \
+    "$grd_pid" \
+    "$freerdp_pid" \
+    "$desktop_x11vnc_pid" \
+    "$vncviewer_pid" \
+    "$x11_input_pid"; do
+    if [[ -n "$optional_pid" ]]; then
+        critical_pids+=("$optional_pid")
+    fi
+done
 wait -n "${critical_pids[@]}"
 set -e
 log 'A bridge process exited; systemd will restart the complete relay.'

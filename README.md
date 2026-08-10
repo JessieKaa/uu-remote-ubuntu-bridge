@@ -95,6 +95,7 @@ service:
 ```bash
 ./install.sh --rdp-port 3391 --resolution 2560x1440 --display auto \
   --desktop-target auto \
+  --desktop-relay rdp \
   --text-key-delay-ms 8 --physical-key-delay-ms 0 \
   --keyboard-route rdp \
   --network-interface all
@@ -116,6 +117,28 @@ seat-attached GDM desktop, while `:N` selects one exact X display. An explicit
 target waits when unavailable and never falls back to a different desktop, so
 UU cannot silently open an empty physical desktop while XRDP windows remain
 elsewhere.
+
+The private canvas normally uses the proven nested GNOME RDP path. If an
+X11/XRDP host is registered and accepts a controller but the canvas remains
+uniform black or white, select the loopback-only VNC fallback:
+
+```bash
+./install.sh --skip-packages --skip-account-login \
+  --desktop-target xrdp --desktop-relay vnc
+```
+
+This does not expose VNC to the LAN: `x11vnc` binds IPv4 loopback only, and a
+native full-screen viewer runs on UU's private X display. Mouse events cross
+that local viewer, while the existing direct-X11 keyboard option remains
+available. The compatibility default stays `rdp`, so upgrades never switch a
+working host automatically. The VNC fallback requires an X11 target and fails
+closed instead of creating a different desktop for Wayland.
+
+On a host where UU opens physical audio devices or stalls during Windows Core
+Audio discovery, set `UURB_UU_AUDIO=off` in a service drop-in. Do not force
+`PULSE_SINK` or `PULSE_SOURCE` to duplicated XRDP endpoint names: a successful
+room HTTP response can otherwise hide a streamer that never connects signaling.
+The no-audio setting is confined to UU's dedicated Wine prefix.
 
 The process-local cursor guard is a host-specific extension and defaults to
 `off`. Enable it only when the controller loses the cursor, renders it too

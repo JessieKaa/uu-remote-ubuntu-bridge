@@ -199,6 +199,30 @@ class RuntimeScriptTests(unittest.TestCase):
             verifier,
         )
 
+    def test_blank_nested_rdp_can_use_an_opt_in_local_vnc_relay(self):
+        installer = (REPOSITORY / "install.sh").read_text()
+        launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
+        verifier = (REPOSITORY / "scripts" / "verify.sh").read_text()
+
+        self.assertIn('desktop_relay="${UURB_DESKTOP_RELAY:-rdp}"', launcher)
+        self.assertIn("--desktop-relay rdp|vnc", installer)
+        self.assertIn("UURB_DESKTOP_RELAY=%s", installer)
+        self.assertIn('[[ "$desktop_relay" == vnc ]]', launcher)
+        self.assertIn("-autoport 5922", launcher)
+        self.assertIn("-localhost", launcher)
+        self.assertIn("-no6", launcher)
+        self.assertIn("DBUS_SESSION_BUS_ADDRESS=unix:path=/dev/null", launcher)
+        self.assertIn("^127\\.0\\.0\\.1:.* - RealVNC Viewer$", launcher)
+        self.assertIn("-AcceptBell=0", launcher)
+        self.assertIn("-AudioVolume=0", launcher)
+        self.assertIn('"$desktop_x11vnc_pid"', launcher)
+        self.assertIn('"$vncviewer_pid"', launcher)
+        self.assertIn("vnc_relay_ready", verifier)
+        self.assertIn("localhost VNC relay owns", verifier)
+        self.assertIn("device_init: success", verifier)
+        self.assertIn("auto login success", verifier)
+        self.assertIn("handle response for: create room, error_code:0", verifier)
+
     def test_runtime_settings_are_persistent_and_collision_safe(self):
         installer = (REPOSITORY / "install.sh").read_text()
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
@@ -212,6 +236,7 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("UURB_RESOLUTION=%s", installer)
         self.assertIn("UURB_DISPLAY=%s", installer)
         self.assertIn("UURB_DESKTOP_TARGET=%s", installer)
+        self.assertIn("UURB_DESKTOP_RELAY=%s", installer)
         self.assertIn("UURB_GRD_FD_RESTART_THRESHOLD=%s", installer)
         self.assertIn("UURB_TEXT_KEY_DELAY_MS=%s", installer)
         self.assertIn("UURB_PHYSICAL_KEY_DELAY_MS=%s", installer)

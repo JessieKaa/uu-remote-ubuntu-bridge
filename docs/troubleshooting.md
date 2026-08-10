@@ -621,20 +621,13 @@ pw-link XRDP_SOURCE_FR UU_INPUT_FR
 
 `wpctl set-mute` records the per-application input and output mute through
 WirePlumber's normal stream-restore mechanism. Do not edit WirePlumber's state
-file directly. For a second persistent, service-scoped device boundary, add:
-
-```ini
-# ~/.config/systemd/user/uu-remote-bridge.service.d/20-audio-isolation.conf
-[Service]
-Environment="PULSE_SINK=xrdp-sink"
-Environment="PULSE_SOURCE=xrdp-source"
-```
-
-Run `systemctl --user daemon-reload`; this does not restart the live bridge.
-The environment applies on its next normal restart. On the validated host,
-the live reroute caused both UU audio streams to close, stopped the overrun
-log at 23:17:18, suspended the webcam source, and left the physical output
-idle. UU, XRDP, GNOME Shell, and open windows remained alive.
+file directly. A live link reroute can be useful for diagnosis, but do not make
+`PULSE_SINK=xrdp-sink` or `PULSE_SOURCE=xrdp-source` a service environment
+override. On the validated multi-session host, many stale XRDP modules exported
+the same node names. Wine connected to PipeWire but then hung forever while
+enumerating Windows Core Audio. The HTTP room request still returned success,
+which made the service look healthy, but signaling never started and
+`LACHLANSERVER` disappeared from every other UU client.
 
 Digital mute is not the same as closing the device. Two subsequently generated
 SHI review builds remained linked to the S/PDIF endpoint while their restored
@@ -662,15 +655,16 @@ prefix:
 # ~/.config/systemd/user/uu-remote-bridge.service.d/20-audio-isolation.conf
 [Service]
 Environment="UURB_UU_AUDIO=off"
-Environment="PULSE_SINK=xrdp-sink"
-Environment="PULSE_SOURCE=xrdp-source"
 ```
 
 Then run `systemctl --user daemon-reload` and restart only
 `uu-remote-bridge.service` during a disconnected UU window. The bridge maps
 `off` to `winepulse.drv=d` in its own Wine process. It does not disable normal
 Ubuntu, browser, XRDP, or other Wine-prefix audio. `UURB_UU_AUDIO=system` is
-the compatibility default and restores UU's former audio behavior.
+the compatibility default and restores UU's former audio behavior. On the
+validated host, `off` completed both WebRTC media factories, connected the
+signal server, reached `room_state_changed: created`, advertised the device as
+`CONNECTED`, and left no UU PipeWire stream attached to a physical device.
 
 ## Service is active but UU stays offline after its server exits
 
@@ -687,6 +681,42 @@ If shutdown previously waited for `winedevice.exe`, rerun the current
 installer. It installs a bounded prefix-scoped cleanup helper. The helper
 matches both the current UID and exact UU `WINEPREFIX`; it does not terminate
 Wine programs from other prefixes.
+
+## Device is online but the shared desktop is black or white
+
+First distinguish signaling from capture. A successful account login, room
+creation, and controller join prove only that the device is visible to UU.
+Inspect the private canvas separately:
+
+```bash
+uu-agent status
+uu-agent snapshot ~/.local/state/uu-remote-bridge/private-canvas.png
+```
+
+If the real target display has content but the private screenshot is uniformly
+black or white, test the source through a localhost-only VNC mirror. On the
+validated dual-NVIDIA/XRDP host, GNOME Remote Desktop 46.3 accepted the local
+FreeRDP client but delivered a blank nested surface; disabling CUDA merely
+changed black to white. The same X11 desktop rendered immediately through
+`x11vnc`, and pointer motion crossed the viewer back to the original display.
+
+Enable the scoped fallback without changing XRDP or logging out:
+
+```bash
+./install.sh --skip-packages --skip-account-login \
+  --desktop-target xrdp --desktop-relay vnc
+```
+
+The fallback owns a dynamically selected loopback port, disables IPv6 and the
+VNC bell, keeps the native viewer full-screen on UU's private display, and is
+supervised in the same service cgroup. It does not reuse or restart the user's
+normal VNC viewer. `rdp` remains the default for other hosts. Switch back with
+`--desktop-relay rdp`.
+
+For UU media compatibility, keep `UURB_UU_AUDIO=system` only if completely
+disabling Wine PulseAudio makes a particular controller disconnect. Do not
+force XRDP sink/source names through the service environment. Disable the VNC
+bell independently; it does not participate in UU's WebRTC negotiation.
 
 ## Device appears offline
 

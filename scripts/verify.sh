@@ -69,6 +69,8 @@ saved_resolution="$(saved_setting UURB_RESOLUTION)"
 resolution="${UURB_RESOLUTION:-${saved_resolution:-1920x1080}}"
 saved_desktop_target="$(saved_setting UURB_DESKTOP_TARGET)"
 desktop_target="${UURB_DESKTOP_TARGET:-${saved_desktop_target:-auto}}"
+saved_desktop_relay="$(saved_setting UURB_DESKTOP_RELAY)"
+desktop_relay="${UURB_DESKTOP_RELAY:-${saved_desktop_relay:-rdp}}"
 saved_keyboard_route="$(saved_setting UURB_KEYBOARD_ROUTE)"
 keyboard_route="${UURB_KEYBOARD_ROUTE:-${saved_keyboard_route:-rdp}}"
 saved_cursor_guard="$(saved_setting UURB_CURSOR_GUARD)"
@@ -139,6 +141,22 @@ relay_listener_ready() {
     fi
     pid="$(grd_pid_for_port)"
     process_namespace_listener_ready "$pid"
+}
+
+vnc_relay_ready() {
+    local viewer_pid
+    local x11vnc_pid
+
+    x11vnc_pid="$(
+        pgrep -o -u "$UID" -f \
+            '^/usr/bin/x11vnc .* -autoport 5922( |$)' 2>/dev/null || true
+    )"
+    viewer_pid="$(
+        pgrep -o -u "$UID" -f \
+            '^/usr/bin/vncviewer .*127\.0\.0\.1:[0-9]+( |$)' \
+            2>/dev/null || true
+    )"
+    [[ -n "$x11vnc_pid" && -n "$viewer_pid" ]]
 }
 
 x11_route_ready() {
@@ -225,7 +243,11 @@ server_startup_ready() {
     [[ "$modified" =~ ^[0-9]+$ ]] || return 1
     ((modified >= service_start_epoch)) || return 1
     grep -q 'update_gvinput.*end' "$latest_server_log" &&
-        grep -q 'room_state_changed: created' "$latest_server_log"
+        grep -q 'device_init: success' "$latest_server_log" &&
+        grep -q 'auto login success' "$latest_server_log" &&
+        { grep -q 'room_state_changed: created' "$latest_server_log" ||
+          grep -q 'handle response for: create room, error_code:0, should_retry:0' \
+              "$latest_server_log"; }
 }
 
 while (($#)); do
@@ -268,12 +290,17 @@ if [[ "$desktop_target" != auto &&
       ! "$desktop_target" =~ ^:(0|[1-9][0-9]{0,2})(\.0)?$ ]]; then
     fail "invalid saved desktop target: $desktop_target"
 fi
+if [[ "$desktop_relay" != rdp && "$desktop_relay" != vnc ]]; then
+    fail "invalid saved desktop relay: $desktop_relay"
+fi
 
 for _ in {1..180}; do
     if bridge_service_active && \
        pgrep -u "$UID" -f 'GameViewerServer\.exe' >/dev/null && \
-       pgrep -u "$UID" -f 'sdl-freerdp\.exe' >/dev/null && \
-       relay_listener_ready && \
+       { { [[ "$desktop_relay" == rdp ]] && \
+           pgrep -u "$UID" -f 'sdl-freerdp\.exe' >/dev/null && \
+           relay_listener_ready; } || \
+         { [[ "$desktop_relay" == vnc ]] && vnc_relay_ready; }; } && \
        x11_route_ready; then
         break
     fi
@@ -370,14 +397,20 @@ cursor_server_pid="$(
     pgrep -o -u "$UID" -f 'GameViewerServer\.exe' || true
 )"
 if [[ "$cursor_guard_setting" == on ]]; then
-    if [[ -f "$cursor_guard" && -n "$relay_pid" &&
+    if [[ "$desktop_relay" == vnc && -f "$cursor_guard" &&
           -n "$cursor_server_pid" ]] &&
-       grep -Fq "$cursor_guard" "/proc/$relay_pid/maps" 2>/dev/null &&
        grep -Fq "$cursor_guard" "/proc/$cursor_server_pid/maps" 2>/dev/null &&
-       grep -q 'UU relay cursor guard active' \
-           "$cursor_guard_log" 2>/dev/null &&
        grep -q 'UU cursor reader guard active' \
            "$cursor_reader_guard_log" 2>/dev/null; then
+        pass 'opt-in UU cursor reader guard is active; native VNC needs no relay DLL'
+    elif [[ "$desktop_relay" == rdp && -f "$cursor_guard" &&
+            -n "$relay_pid" && -n "$cursor_server_pid" ]] &&
+         grep -Fq "$cursor_guard" "/proc/$relay_pid/maps" 2>/dev/null &&
+         grep -Fq "$cursor_guard" "/proc/$cursor_server_pid/maps" 2>/dev/null &&
+         grep -q 'UU relay cursor guard active' \
+             "$cursor_guard_log" 2>/dev/null &&
+         grep -q 'UU cursor reader guard active' \
+             "$cursor_reader_guard_log" 2>/dev/null; then
         pass 'opt-in relay and UU cursor guards are active'
     else
         fail 'opt-in relay or UU cursor guard is missing or inactive'
@@ -493,6 +526,7 @@ if [[ "$active_keyboard_route" == x11 ]]; then
     fi
 fi
 
+if [[ "$desktop_relay" == rdp ]]; then
 configured_rdp_port="$(
     /usr/bin/gsettings get org.gnome.desktop.remote-desktop.rdp port | \
         /usr/bin/awk '{print $2}'
@@ -584,6 +618,34 @@ if [[ -n "$grd_pid" ]]; then
         pass "GNOME RDP uses $grd_fd_count/$grd_fd_restart_threshold guarded descriptors"
     else
         fail "GNOME RDP uses $grd_fd_count descriptors, at or above the $grd_fd_restart_threshold restart threshold"
+    fi
+fi
+else
+    grd_pid=""
+    desktop_x11vnc_pid="$(
+        pgrep -o -u "$UID" -f \
+            '^/usr/bin/x11vnc .* -autoport 5922( |$)' 2>/dev/null || true
+    )"
+    desktop_vncviewer_pid="$(
+        pgrep -o -u "$UID" -f \
+            '^/usr/bin/vncviewer .*127\.0\.0\.1:[0-9]+( |$)' \
+            2>/dev/null || true
+    )"
+    desktop_vnc_port="$(
+        /usr/bin/sed -n 's/^PORT=\([0-9][0-9]*\)$/\1/p' \
+            "${XDG_STATE_HOME:-$HOME/.local/state}/uu-remote-bridge/desktop-x11vnc.log" \
+            2>/dev/null | /usr/bin/tail -n 1
+    )"
+    desktop_vnc_display="$(
+        process_environment_value DISPLAY "$desktop_x11vnc_pid" || true
+    )"
+    if [[ -n "$desktop_x11vnc_pid" && -n "$desktop_vncviewer_pid" &&
+          "$desktop_vnc_port" =~ ^[0-9]+$ ]] &&
+       /usr/bin/ss -H -ltnp "sport = :$desktop_vnc_port" 2>/dev/null | \
+           /usr/bin/grep -q "pid=$desktop_x11vnc_pid,"; then
+        pass "localhost VNC relay owns 127.0.0.1:$desktop_vnc_port and mirrors $desktop_vnc_display"
+    else
+        fail 'localhost VNC relay or its private-canvas viewer is unavailable'
     fi
 fi
 

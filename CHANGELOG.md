@@ -87,6 +87,14 @@ locked by the release manifest.
 
 ### Fixed
 
+- prevent the validated host from remaining invisible after an apparently
+  successful room request: forced duplicate XRDP Pulse endpoint names stalled
+  Wine Core Audio before signaling; the host now uses the prefix-scoped
+  no-audio mode and reaches `room_state_changed: created` without physical
+  playback streams
+- add an opt-in, loopback-only native VNC desktop relay for X11/XRDP hosts
+  where nested GNOME RDP authenticates but renders a uniform black or white
+  UU canvas; the RDP relay remains the compatibility default
 - prevent UU from silently switching from a long-lived XRDP desktop to a new
   physical/GDM desktop when the systemd user-manager display changes
 - reject a mismatched live X11 desktop/private UU canvas during verification,

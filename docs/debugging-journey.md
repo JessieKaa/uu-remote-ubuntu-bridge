@@ -692,3 +692,52 @@ online”:
 - a fresh controller participant reaches peer states 1 through 3;
 - media initialization returns and video capture starts; and
 - no GameViewer stream or physical PCM appears when silent audio is selected.
+
+## 20. Route mouse input with the relay architecture, not its old focus gate
+
+After the native loopback VNC relay restored a connectable video session, a
+controller could see the desktop but could neither click nor type reliably.
+Fresh privacy-safe broker records made the mouse failure deterministic:
+
+```text
+category=mouse route=rdp focus=timeout result=0 error=21
+```
+
+The input hook and normal-token broker were both healthy. The mismatch was
+architectural: the old mouse fallback searched for a Wine window titled
+`Ubuntu-Desktop-Relay`, requested Win32 foreground focus, and then called
+`SendInput`. The replacement relay is a native Linux VNC viewer. X11 correctly
+focused that native window, but Wine could not represent it as the expected
+foreground `HWND`, so every mouse record failed before injection. Restarting
+XRDP, changing the network, or repeatedly forcing focus could not repair that
+boundary.
+
+The correction extends the already authenticated direct-X11 protocol instead
+of adding another daemon or restoring the fragile nested RDP viewer. Protocol
+version 2 carries bounded keyboard and mouse records. The helper preflights the
+whole request, then maps relative and normalized absolute movement, left/right/
+middle/X buttons, and vertical/horizontal wheel events to XTEST on the selected
+live X11 desktop. Unsupported preflight still falls back before injection; an
+ambiguous partial failure is never replayed. Disconnect cleanup now releases
+held mouse buttons as well as keys. Hosts that retain
+`UURB_KEYBOARD_ROUTE=rdp` are unchanged.
+
+The live XRDP desktop had also resized from 1680x1050 to 1920x1080 while the
+private UU canvas remained at the older size. The saved relay resolution was
+aligned to 1920x1080 before one bridge-only restart, preserving XRDP and every
+open desktop application.
+
+The reusable isolated acceptance is:
+
+```bash
+./scripts/test-x11-mouse.sh
+```
+
+It sends normalized absolute motion plus a complete left click through the
+Windows broker. The isolated X server observed the exact expected pointer
+position and ordered click/wheel transitions; broker metadata reported
+`route=x11-mouse result=6 error=0`. The existing 52-transition phone-text test
+and all 97 repository tests continued to pass. Live verification then confirmed
+that the private canvas and selected desktop were both 1920x1080 and that the
+same supervised X11 helper remained active; no XRDP, GNOME, GDM, PipeWire, or
+WirePlumber process was restarted.

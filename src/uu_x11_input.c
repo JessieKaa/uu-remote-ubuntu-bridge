@@ -24,10 +24,18 @@ typedef unsigned char KeyCode;
 typedef Display *(*x_open_display_fn)(const char *);
 typedef int (*x_close_display_fn)(Display *);
 typedef int (*x_sync_fn)(Display *, Bool);
+typedef int (*x_default_screen_fn)(Display *);
+typedef int (*x_display_dimension_fn)(Display *, int);
 typedef KeyCode (*x_keysym_to_keycode_fn)(Display *, KeySym);
 typedef Bool (*xtest_query_extension_fn)(Display *, int *, int *, int *, int *);
 typedef Bool (*xtest_fake_key_event_fn)(Display *, unsigned int, Bool,
                                         unsigned long);
+typedef Bool (*xtest_fake_button_event_fn)(Display *, unsigned int, Bool,
+                                           unsigned long);
+typedef Bool (*xtest_fake_motion_event_fn)(Display *, int, int, int,
+                                           unsigned long);
+typedef Bool (*xtest_fake_relative_motion_event_fn)(Display *, int, int,
+                                                    unsigned long);
 
 typedef struct x11_api {
     void *x11_library;
@@ -35,9 +43,15 @@ typedef struct x11_api {
     x_open_display_fn open_display;
     x_close_display_fn close_display;
     x_sync_fn sync;
+    x_default_screen_fn default_screen;
+    x_display_dimension_fn display_width;
+    x_display_dimension_fn display_height;
     x_keysym_to_keycode_fn keysym_to_keycode;
     xtest_query_extension_fn query_extension;
     xtest_fake_key_event_fn fake_key_event;
+    xtest_fake_button_event_fn fake_button_event;
+    xtest_fake_motion_event_fn fake_motion_event;
+    xtest_fake_relative_motion_event_fn fake_relative_motion_event;
 } x11_api;
 
 static volatile sig_atomic_t stop_requested;
@@ -165,7 +179,7 @@ static KeySym extended_scan_to_keysym(unsigned int scan)
 }
 
 static unsigned int event_to_x_keycode(const x11_api *api, Display *display,
-                                       const uurb_x11_key_event *event)
+                                       const uurb_x11_input_event *event)
 {
     unsigned int scan = event->scan_code & 0xffU;
 
@@ -181,6 +195,154 @@ static unsigned int event_to_x_keycode(const x11_api *api, Display *display,
     if (scan > 247U)
         return 0;
     return scan + 8U;
+}
+
+static bool valid_mouse_event(const uurb_x11_input_event *event)
+{
+    const uint32_t allowed_flags =
+        UURB_MOUSEEVENTF_MOVE | UURB_MOUSEEVENTF_LEFTDOWN |
+        UURB_MOUSEEVENTF_LEFTUP | UURB_MOUSEEVENTF_RIGHTDOWN |
+        UURB_MOUSEEVENTF_RIGHTUP | UURB_MOUSEEVENTF_MIDDLEDOWN |
+        UURB_MOUSEEVENTF_MIDDLEUP | UURB_MOUSEEVENTF_XDOWN |
+        UURB_MOUSEEVENTF_XUP | UURB_MOUSEEVENTF_WHEEL |
+        UURB_MOUSEEVENTF_HWHEEL | UURB_MOUSEEVENTF_MOVE_NOCOALESCE |
+        UURB_MOUSEEVENTF_VIRTUALDESK | UURB_MOUSEEVENTF_ABSOLUTE;
+    uint32_t xbutton;
+
+    if ((event->flags & ~allowed_flags) != 0)
+        return false;
+    if ((event->flags & (UURB_MOUSEEVENTF_WHEEL |
+                         UURB_MOUSEEVENTF_HWHEEL)) ==
+        (UURB_MOUSEEVENTF_WHEEL | UURB_MOUSEEVENTF_HWHEEL))
+        return false;
+    if ((event->flags & (UURB_MOUSEEVENTF_WHEEL |
+                         UURB_MOUSEEVENTF_HWHEEL)) != 0 &&
+        (int32_t)event->data == 0)
+        return false;
+    if ((event->flags & (UURB_MOUSEEVENTF_XDOWN |
+                         UURB_MOUSEEVENTF_XUP)) == 0)
+        return true;
+
+    xbutton = event->data & UINT32_C(0xffff);
+    return xbutton == 1U || xbutton == 2U;
+}
+
+static int normalized_coordinate(int32_t value, int extent)
+{
+    int64_t clamped = value;
+
+    if (clamped < 0)
+        clamped = 0;
+    if (clamped > 65535)
+        clamped = 65535;
+    if (extent <= 1)
+        return 0;
+    return (int)((clamped * (extent - 1) + 32767) / 65535);
+}
+
+static bool fake_button(const x11_api *api, Display *display,
+                        unsigned int button, bool press,
+                        bool pressed_buttons[10])
+{
+    if (button == 0 || button >= 10 ||
+        !api->fake_button_event(display, button, press ? 1 : 0, 0))
+        return false;
+    pressed_buttons[button] = press;
+    return true;
+}
+
+static unsigned int wheel_steps(int32_t delta)
+{
+    int64_t magnitude = delta;
+    uint64_t steps;
+
+    if (magnitude < 0)
+        magnitude = -magnitude;
+    steps = ((uint64_t)magnitude + UINT64_C(119)) / UINT64_C(120);
+    if (steps > 32U)
+        steps = 32U;
+    return (unsigned int)steps;
+}
+
+static bool fake_wheel(const x11_api *api, Display *display,
+                       unsigned int button, unsigned int steps,
+                       bool pressed_buttons[10])
+{
+    unsigned int index;
+
+    for (index = 0; index < steps; index++) {
+        if (!fake_button(api, display, button, true, pressed_buttons) ||
+            !fake_button(api, display, button, false, pressed_buttons))
+            return false;
+    }
+    return true;
+}
+
+static bool inject_mouse_event(const x11_api *api, Display *display,
+                               const uurb_x11_input_event *event,
+                               bool pressed_buttons[10])
+{
+    uint32_t flags = event->flags;
+
+    if ((flags & UURB_MOUSEEVENTF_MOVE) != 0) {
+        if ((flags & UURB_MOUSEEVENTF_ABSOLUTE) != 0) {
+            int screen = api->default_screen(display);
+            int width = api->display_width(display, screen);
+            int height = api->display_height(display, screen);
+
+            if (!api->fake_motion_event(
+                    display, screen,
+                    normalized_coordinate(event->x, width),
+                    normalized_coordinate(event->y, height), 0))
+                return false;
+        } else if (!api->fake_relative_motion_event(
+                       display, event->x, event->y, 0)) {
+            return false;
+        }
+    }
+    if ((flags & UURB_MOUSEEVENTF_LEFTDOWN) != 0 &&
+        !fake_button(api, display, 1, true, pressed_buttons))
+        return false;
+    if ((flags & UURB_MOUSEEVENTF_LEFTUP) != 0 &&
+        !fake_button(api, display, 1, false, pressed_buttons))
+        return false;
+    if ((flags & UURB_MOUSEEVENTF_RIGHTDOWN) != 0 &&
+        !fake_button(api, display, 3, true, pressed_buttons))
+        return false;
+    if ((flags & UURB_MOUSEEVENTF_RIGHTUP) != 0 &&
+        !fake_button(api, display, 3, false, pressed_buttons))
+        return false;
+    if ((flags & UURB_MOUSEEVENTF_MIDDLEDOWN) != 0 &&
+        !fake_button(api, display, 2, true, pressed_buttons))
+        return false;
+    if ((flags & UURB_MOUSEEVENTF_MIDDLEUP) != 0 &&
+        !fake_button(api, display, 2, false, pressed_buttons))
+        return false;
+    if ((flags & UURB_MOUSEEVENTF_XDOWN) != 0 &&
+        !fake_button(api, display,
+                     (event->data & UINT32_C(0xffff)) == 1U ? 8U : 9U, true,
+                     pressed_buttons))
+        return false;
+    if ((flags & UURB_MOUSEEVENTF_XUP) != 0 &&
+        !fake_button(api, display,
+                     (event->data & UINT32_C(0xffff)) == 1U ? 8U : 9U, false,
+                     pressed_buttons))
+        return false;
+    if ((flags & UURB_MOUSEEVENTF_WHEEL) != 0) {
+        int32_t delta = (int32_t)event->data;
+
+        if (!fake_wheel(api, display, delta > 0 ? 4U : 5U,
+                        wheel_steps(delta), pressed_buttons))
+            return false;
+    }
+    if ((flags & UURB_MOUSEEVENTF_HWHEEL) != 0) {
+        int32_t delta = (int32_t)event->data;
+
+        if (!fake_wheel(api, display, delta > 0 ? 7U : 6U,
+                        wheel_steps(delta), pressed_buttons))
+            return false;
+    }
+    return true;
 }
 
 static bool load_x11_api(x11_api *api)
@@ -202,15 +364,31 @@ static bool load_x11_api(x11_api *api)
     api->close_display = (x_close_display_fn)dlsym(api->x11_library,
                                                    "XCloseDisplay");
     api->sync = (x_sync_fn)dlsym(api->x11_library, "XSync");
+    api->default_screen = (x_default_screen_fn)dlsym(
+        api->x11_library, "XDefaultScreen");
+    api->display_width = (x_display_dimension_fn)dlsym(
+        api->x11_library, "XDisplayWidth");
+    api->display_height = (x_display_dimension_fn)dlsym(
+        api->x11_library, "XDisplayHeight");
     api->keysym_to_keycode = (x_keysym_to_keycode_fn)dlsym(
         api->x11_library, "XKeysymToKeycode");
     api->query_extension = (xtest_query_extension_fn)dlsym(
         api->xtst_library, "XTestQueryExtension");
     api->fake_key_event = (xtest_fake_key_event_fn)dlsym(
         api->xtst_library, "XTestFakeKeyEvent");
+    api->fake_button_event = (xtest_fake_button_event_fn)dlsym(
+        api->xtst_library, "XTestFakeButtonEvent");
+    api->fake_motion_event = (xtest_fake_motion_event_fn)dlsym(
+        api->xtst_library, "XTestFakeMotionEvent");
+    api->fake_relative_motion_event =
+        (xtest_fake_relative_motion_event_fn)dlsym(
+            api->xtst_library, "XTestFakeRelativeMotionEvent");
     if (!api->open_display || !api->close_display || !api->sync ||
-        !api->keysym_to_keycode ||
-        !api->query_extension || !api->fake_key_event)
+        !api->default_screen || !api->display_width ||
+        !api->display_height || !api->keysym_to_keycode ||
+        !api->query_extension || !api->fake_key_event ||
+        !api->fake_button_event || !api->fake_motion_event ||
+        !api->fake_relative_motion_event)
         return false;
 
     display = api->open_display(NULL);
@@ -288,17 +466,26 @@ static int create_listener(const char *ready_file)
     return fd;
 }
 
-static void release_pressed_keys(x11_api *api, Display *display,
-                                 bool pressed[256])
+static void release_pressed_inputs(x11_api *api, Display *display,
+                                   bool pressed_keys[256],
+                                   bool pressed_buttons[10])
 {
     unsigned int keycode;
+    unsigned int button;
     bool changed = false;
 
     for (keycode = 8; keycode < 256; keycode++) {
-        if (!pressed[keycode])
+        if (!pressed_keys[keycode])
             continue;
         api->fake_key_event(display, keycode, 0, 0);
-        pressed[keycode] = false;
+        pressed_keys[keycode] = false;
+        changed = true;
+    }
+    for (button = 1; button < 10; button++) {
+        if (!pressed_buttons[button])
+            continue;
+        api->fake_button_event(display, button, 0, 0);
+        pressed_buttons[button] = false;
         changed = true;
     }
     if (changed)
@@ -320,7 +507,8 @@ static bool send_response(int client, uint32_t sequence, uint32_t result,
 static void serve_client(int client, const char *token, x11_api *api,
                          Display *display, unsigned int minimum_hold_ms)
 {
-    bool pressed[256] = {false};
+    bool pressed_keys[256] = {false};
+    bool pressed_buttons[10] = {false};
     uint64_t pressed_at[256] = {0};
     uurb_x11_handshake handshake;
 
@@ -332,7 +520,7 @@ static void serve_client(int client, const char *token, x11_api *api,
         return;
 
     while (!stop_requested) {
-        uurb_x11_key_event events[UURB_X11_INPUT_MAX_EVENTS];
+        uurb_x11_input_event events[UURB_X11_INPUT_MAX_EVENTS];
         unsigned int keycodes[UURB_X11_INPUT_MAX_EVENTS];
         uurb_x11_request request;
         uint32_t index;
@@ -353,9 +541,17 @@ static void serve_client(int client, const char *token, x11_api *api,
             break;
 
         for (index = 0; index < request.count; index++) {
-            keycodes[index] = event_to_x_keycode(api, display,
-                                                 &events[index]);
-            if (keycodes[index] == 0) {
+            keycodes[index] = 0;
+            if (events[index].type == UURB_X11_INPUT_KEYBOARD)
+                keycodes[index] = event_to_x_keycode(api, display,
+                                                     &events[index]);
+            else if (events[index].type != UURB_X11_INPUT_MOUSE ||
+                     !valid_mouse_event(&events[index])) {
+                error = UURB_X11_ERROR_UNSUPPORTED;
+                break;
+            }
+            if (events[index].type == UURB_X11_INPUT_KEYBOARD &&
+                keycodes[index] == 0) {
                 error = UURB_X11_ERROR_UNSUPPORTED;
                 break;
             }
@@ -367,25 +563,32 @@ static void serve_client(int client, const char *token, x11_api *api,
         }
 
         for (index = 0; index < request.count; index++) {
-            unsigned int keycode = keycodes[index];
-            bool is_release =
-                (events[index].flags & UURB_KEYEVENTF_KEYUP) != 0;
+            if (events[index].type == UURB_X11_INPUT_KEYBOARD) {
+                unsigned int keycode = keycodes[index];
+                bool is_release =
+                    (events[index].flags & UURB_KEYEVENTF_KEYUP) != 0;
 
-            if (is_release && pressed[keycode] && minimum_hold_ms > 0) {
-                uint64_t now = monotonic_milliseconds();
-                uint64_t elapsed = now - pressed_at[keycode];
+                if (is_release && pressed_keys[keycode] &&
+                    minimum_hold_ms > 0) {
+                    uint64_t now = monotonic_milliseconds();
+                    uint64_t elapsed = now - pressed_at[keycode];
 
-                if (elapsed < minimum_hold_ms)
-                    sleep_milliseconds(minimum_hold_ms - elapsed);
-            }
-            if (!api->fake_key_event(display, keycode,
-                                     is_release ? 0 : 1, 0)) {
+                    if (elapsed < minimum_hold_ms)
+                        sleep_milliseconds(minimum_hold_ms - elapsed);
+                }
+                if (!api->fake_key_event(display, keycode,
+                                         is_release ? 0 : 1, 0)) {
+                    error = UURB_X11_ERROR_INJECTION;
+                    break;
+                }
+                pressed_keys[keycode] = !is_release;
+                if (!is_release)
+                    pressed_at[keycode] = monotonic_milliseconds();
+            } else if (!inject_mouse_event(api, display, &events[index],
+                                           pressed_buttons)) {
                 error = UURB_X11_ERROR_INJECTION;
                 break;
             }
-            pressed[keycode] = !is_release;
-            if (!is_release)
-                pressed_at[keycode] = monotonic_milliseconds();
             injected++;
         }
         api->sync(display, 0);
@@ -393,7 +596,7 @@ static void serve_client(int client, const char *token, x11_api *api,
                            error == 0 ? request.count : injected, error))
             break;
     }
-    release_pressed_keys(api, display, pressed);
+    release_pressed_inputs(api, display, pressed_keys, pressed_buttons);
 }
 
 static void usage(const char *program)

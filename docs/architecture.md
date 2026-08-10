@@ -157,22 +157,23 @@ before calling `SendInput`. It returns the real count and error code to UU only
 after that boundary succeeds.
 
 On an X11 target with `UURB_KEYBOARD_ROUTE=x11`, the broker sends bounded
-keyboard-only arrays to `uu-x11-input` over a token-authenticated loopback
-socket. Physical arrays are mapped directly. Unicode phone-text arrays are
-first normalized into ordinary virtual-key chords, so neither Unicode values
-nor text cross the helper protocol. The native helper preflights the complete
-translated array, maps the established XFree86 scan-code set to X11 keycodes,
-and uses XTEST on the discovered live desktop. Mouse and mixed arrays remain
-on the RDP route. A helper that is absent, unreachable before injection, or
-presented with an unsupported event safely falls back to RDP. A communication
-failure after injection begins returns an error without replay, preventing
-duplicate keys. Held keys are released when the broker disconnects, and
+keyboard, mouse, or mixed arrays to `uu-x11-input` over a token-authenticated
+loopback socket. Physical keys are mapped directly. Unicode phone-text arrays
+are first normalized into ordinary virtual-key chords, so neither Unicode
+values nor text cross the helper protocol. The native helper preflights the
+complete translated array, maps the established XFree86 scan-code set to X11
+keycodes, and maps Windows relative/normalized motion, buttons, vertical and
+horizontal wheel events to XTEST on the discovered live desktop. A helper that
+is absent, unreachable before injection, or presented with an unsupported
+event safely falls back to the selected desktop relay. A communication failure
+after injection begins returns an error without replay, preventing duplicate
+input. Held keys and buttons are released when the broker disconnects, and
 helper exit restarts the supervised bridge.
 
-The direct route removes two conversions—Wine `SendInput` into SDL FreeRDP and
-FreeRDP into GNOME RDP—for the keyboard categories that remained lossy on the
-affected XRDP workstation. It is not enabled globally because the original RDP
-route is known-good on other hosts and is still required for Wayland targets.
+The direct route removes the nested Wine/desktop-relay conversions for the
+input categories that failed on the affected XRDP workstation. It is not
+enabled globally because the original RDP route is known-good on other hosts
+and is still required for Wayland targets.
 
 No key code, Unicode character, clipboard payload, or text is written to the
 diagnostic logs.

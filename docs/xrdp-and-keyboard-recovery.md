@@ -199,10 +199,10 @@ therefore bypass the lossy nested keyboard conversion while preserving all
 other working channels:
 
 ```text
-UU physical key or normalized phone text
+UU physical key, normalized phone text, or mouse input
   -> Wine hook -> user-token broker -> X11 helper -> Xorg
 
-UU video/mouse/clipboard -> existing SDL FreeRDP -> GNOME RDP -> desktop
+UU video/clipboard -> selected local desktop relay -> desktop
 ```
 
 Enable this route only on a verified Xorg/XRDP target:
@@ -213,15 +213,17 @@ Enable this route only on a verified Xorg/XRDP target:
 ./scripts/verify.sh --quick
 ```
 
-The native helper uses XTEST on the discovered desktop and accepts only
-physical keyboard arrays over an authenticated loopback socket. Phone Unicode
-is converted into those ordinary key chords inside the broker before crossing
-that boundary. The helper is supervised by the existing service and preflights
-each complete array. Unavailable or unsupported input falls back before
-injection; a failure after possible injection is returned without replay,
-avoiding duplicate keys. Disconnect releases tracked held keys. With the
-direct route, the physical delay is a minimum key-hold interval rather than a
-delay after every down and up event; zero keeps the path non-blocking.
+The native helper uses XTEST on the discovered desktop and accepts bounded
+keyboard and mouse arrays over an authenticated loopback socket. Phone Unicode
+is converted into ordinary key chords inside the broker before crossing that
+boundary. Mouse movement, buttons, and wheel events are translated without
+logging coordinates. The helper is supervised by the existing service and
+preflights each complete array. Unavailable or unsupported input falls back
+before injection; a failure after possible injection is returned without
+replay, avoiding duplicates. Disconnect releases tracked held keys and
+buttons. With the direct route, the physical delay is a minimum key-hold
+interval rather than a delay after every down and up event; zero keeps the path
+non-blocking.
 
 Restore the universally compatible path without deleting UU state:
 
@@ -244,6 +246,11 @@ A later isolated phone-text test sent a fixed 26-letter Unicode batch through
 the Windows broker. It returned all 52 source records on `route=x11-text`, and
 XTEST delivered all 26 presses and 26 releases in exact order. Reproduce this
 without touching the live desktop with `./scripts/test-x11-phone-text.sh`.
+
+The isolated mouse test sends normalized absolute movement plus a complete
+left click through the broker. It requires the exact expected pointer position,
+ordered press/release transitions, and `route=x11-mouse ... error=0`. Run it
+with `./scripts/test-x11-mouse.sh`.
 
 The subsequent real UU controller test reached the newly restarted broker, not
 an older RDP process: all 256 sampled physical-key records reported

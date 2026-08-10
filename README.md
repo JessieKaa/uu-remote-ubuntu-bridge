@@ -220,9 +220,10 @@ desktop, the opt-in direct route removes only that final keyboard hop:
   --keyboard-route x11 --physical-key-delay-ms 0
 ```
 
-Mouse, video, and clipboard continue through the proven RDP relay. Physical
-keys and layout-representable phone text go through an authenticated loopback
-helper and XTEST into the selected X11 desktop. Phone text is still normalized
+Video and clipboard continue through the selected local desktop relay.
+Physical keys, layout-representable phone text, and mouse movement/buttons/
+wheel go through an authenticated loopback helper and XTEST into the selected
+X11 desktop. Phone text is still normalized
 into ordinary virtual-key chords before that boundary; unsupported Unicode
 fails explicitly rather than becoming an unrelated key. The global default
 remains `rdp`; `auto` selects the direct route only for an X11 target. If
@@ -245,6 +246,14 @@ touching the live desktop:
 
 ```bash
 ./scripts/test-x11-phone-text.sh
+```
+
+The companion mouse acceptance sends absolute movement and a complete click
+through the same broker. It verifies the exact X11 pointer position, ordered
+button transitions, `route=x11-mouse`, and `error=0`:
+
+```bash
+./scripts/test-x11-mouse.sh
 ```
 
 After live deployment, the operator confirmed that normal phone-keyboard
@@ -424,9 +433,9 @@ host. Automatic selection remains the default; a persistent `xrdp`,
 switching desktops after reboot. When
 Wine denies `SendInput` from UU's service token, so a bounded broker repeats
 the same input request from a normal user Wine process. On an explicitly
-selected X11 target, physical keys and normalized, layout-representable phone
-text can instead bypass the nested RDP input conversion; video, mouse,
-clipboard, and all non-keyboard channels keep the original relay.
+selected X11 target, physical keys, normalized layout-representable phone text,
+and mouse input bypass the nested desktop-relay input conversion. Video,
+clipboard, and all other channels keep the selected local relay.
 
 [Read the complete architecture](docs/architecture.md).
 The [debugging journey](docs/debugging-journey.md) records the failed

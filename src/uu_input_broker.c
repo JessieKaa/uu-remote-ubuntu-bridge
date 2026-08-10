@@ -236,12 +236,21 @@ static BOOL connect_x11_input(void)
 }
 
 static BOOL input_to_x11_event(const INPUT *input,
-                               uurb_x11_key_event *event)
+                               uurb_x11_input_event *event)
 {
     UINT mapped;
     DWORD flags;
     WORD scan;
 
+    ZeroMemory(event, sizeof(*event));
+    if (input->type == INPUT_MOUSE) {
+        event->type = UURB_X11_INPUT_MOUSE;
+        event->flags = input->mi.dwFlags;
+        event->x = input->mi.dx;
+        event->y = input->mi.dy;
+        event->data = input->mi.mouseData;
+        return TRUE;
+    }
     if (input->type != INPUT_KEYBOARD ||
         (input->ki.dwFlags & KEYEVENTF_UNICODE) != 0)
         return FALSE;
@@ -260,9 +269,10 @@ static BOOL input_to_x11_event(const INPUT *input,
     if (scan == 0)
         return FALSE;
 
+    event->type = UURB_X11_INPUT_KEYBOARD;
+    event->flags = flags;
     event->virtual_key = input->ki.wVk;
     event->scan_code = scan;
-    event->flags = flags;
     return TRUE;
 }
 
@@ -271,7 +281,7 @@ static x11_route_result send_x11_inputs(DWORD count, const INPUT *inputs,
 {
     struct {
         uurb_x11_request request;
-        uurb_x11_key_event events[INPUT_BRIDGE_MAX_INPUTS];
+        uurb_x11_input_event events[INPUT_BRIDGE_MAX_INPUTS];
     } packet;
     uurb_x11_response response;
     DWORD index;
@@ -280,11 +290,6 @@ static x11_route_result send_x11_inputs(DWORD count, const INPUT *inputs,
     if (!x11_input_configured || count == 0 ||
         count > INPUT_BRIDGE_MAX_INPUTS)
         return X11_ROUTE_NOT_USED;
-    for (index = 0; index < count; index++) {
-        if (inputs[index].type != INPUT_KEYBOARD ||
-            (inputs[index].ki.dwFlags & KEYEVENTF_UNICODE) != 0)
-            return X11_ROUTE_NOT_USED;
-    }
     *considered = TRUE;
     for (index = 0; index < count; index++) {
         if (!input_to_x11_event(&inputs[index], &packet.events[index]))
@@ -508,6 +513,8 @@ static DWORD send_relay_inputs(DWORD source_count, const INPUT *source,
     DWORD translated_count;
     DWORD segment_count;
     DWORD index;
+    BOOL x11_has_keyboard;
+    BOOL x11_has_mouse;
 
     *normalized_unicode = FALSE;
     *paced_characters = 0;
@@ -537,16 +544,28 @@ static DWORD send_relay_inputs(DWORD source_count, const INPUT *source,
      */
     x11_result = send_x11_inputs(translated_count, translated, error,
                                  &x11_considered);
+    x11_has_keyboard = inputs_contain_type(translated_count, translated,
+                                           INPUT_KEYBOARD);
+    x11_has_mouse = inputs_contain_type(translated_count, translated,
+                                        INPUT_MOUSE);
     if (x11_result == X11_ROUTE_SUCCESS) {
-        if (*normalized_unicode)
+        if (x11_has_keyboard && x11_has_mouse)
+            *route = "x11-mixed";
+        else if (*normalized_unicode)
             *route = "x11-text";
+        else if (x11_has_mouse)
+            *route = "x11-mouse";
         else
             *route = "x11";
         return source_count;
     }
     if (x11_result == X11_ROUTE_FAILED) {
-        if (*normalized_unicode)
+        if (x11_has_keyboard && x11_has_mouse)
+            *route = "x11-mixed-error";
+        else if (*normalized_unicode)
             *route = "x11-text-error";
+        else if (x11_has_mouse)
+            *route = "x11-mouse-error";
         else
             *route = "x11-error";
         return 0;
@@ -738,8 +757,7 @@ static void serve_client(HANDLE pipe)
                 (unsigned long)first_type, (unsigned long)first_flags,
                 normalized_unicode ? "normalized" : "unchanged",
                 route,
-                (strcmp(route, "x11") == 0 ||
-                 strcmp(route, "x11-text") == 0) ? "bypassed" :
+                strncmp(route, "x11", 3) == 0 ? "bypassed" :
                 (focus_ready ? "ready" : "timeout"),
                 (unsigned long)focus_wait_ms,
                 (unsigned long)paced_characters,

@@ -742,7 +742,7 @@ class RuntimeScriptTests(unittest.TestCase):
             broker.index("response.result = send_relay_inputs", serve_client),
         )
 
-    def test_direct_x11_keyboard_route_is_opt_in_and_fail_safe(self):
+    def test_direct_x11_input_route_is_opt_in_and_fail_safe(self):
         builder = (REPOSITORY / "scripts" / "build-compat.sh").read_text()
         installer = (REPOSITORY / "install.sh").read_text()
         launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
@@ -761,7 +761,7 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("send_x11_inputs", broker)
         self.assertIn('route = "x11-error"', broker)
         self.assertIn("ERROR_CONNECTION_ABORTED", broker)
-        self.assertIn("release_pressed_keys", helper)
+        self.assertIn("release_pressed_inputs", helper)
         self.assertIn("minimum_hold_ms", helper)
         self.assertIn("XKeysymToKeycode", helper)
         self.assertIn("extended_scan_to_keysym", helper)
@@ -770,7 +770,14 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn("0xff51UL; /* XK_Left */", helper)
         self.assertIn("0xff53UL; /* XK_Right */", helper)
         self.assertNotIn("return 104; /* Down */", helper)
-        self.assertNotIn("XTestFakeButtonEvent", helper)
+        self.assertIn("XTestFakeButtonEvent", helper)
+        self.assertIn("XTestFakeMotionEvent", helper)
+        self.assertIn("XTestFakeRelativeMotionEvent", helper)
+        self.assertIn("valid_mouse_event", helper)
+        self.assertIn('route = "x11-mouse"', broker)
+        self.assertTrue(
+            (REPOSITORY / "scripts" / "test-x11-mouse.sh").exists()
+        )
 
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / "uu-x11-input"

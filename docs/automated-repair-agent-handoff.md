@@ -51,9 +51,10 @@ UURB_KEYBOARD_ROUTE=x11
 UURB_PHYSICAL_KEY_DELAY_MS=0
 ```
 
-The authenticated loopback X11/XTEST helper handles physical keys and
-layout-representable normalized phone text. Video, mouse, and clipboard remain
-on the local RDP relay. The detailed recovery and rollback are in
+The authenticated loopback X11/XTEST helper handles physical keys,
+layout-representable normalized phone text, and mouse motion/buttons/wheel.
+Video and clipboard remain on the selected local desktop relay. The detailed
+recovery and rollback are in
 [XRDP Client Stall and UU Keyboard Recovery](xrdp-and-keyboard-recovery.md).
 
 ## Keyboard Boundaries That Must Stay Separate
@@ -209,10 +210,11 @@ Automated completion is not live approval. A maintainer must still verify:
 - rollback is available before touching the healthy live relay.
 
 The normal phone-keyboard acceptance string is `abcXYZ123,.!?`. On the direct
-X11 track, require fresh content-free `category=keyboard route=x11` and
-`category=text route=x11-text` records with matching result counts and
-`error=0`. On the compatible RDP track, preserve its already-validated broker
-behavior rather than forcing the X11 helper.
+X11 track, require fresh content-free `category=keyboard route=x11`,
+`category=text route=x11-text`, and `category=mouse route=x11-mouse` records
+with matching result counts and `error=0`. On the compatible RDP track,
+preserve its already-validated broker behavior rather than forcing the X11
+helper.
 
 ## Privacy
 

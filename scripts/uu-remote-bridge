@@ -1141,6 +1141,7 @@ bootstrap_account
 supervise_server() {
     local last_pid="$1"
     local candidate
+    local candidate_relay_window_id
     local current_default_interface
     local active_window_id
     local focus_checks=0
@@ -1176,6 +1177,22 @@ supervise_server() {
         focus_checks=$((focus_checks + 1))
         if ((focus_checks >= 4)); then
             focus_checks=0
+            # RealVNC may replace its initial top-level window when it enters
+            # full-screen mode. Refresh the ID before focusing so an obsolete
+            # startup ID cannot leave UU's management window over the relay.
+            if [[ "$desktop_relay" == vnc ]]; then
+                candidate_relay_window_id="$(
+                    {
+                        /usr/bin/xdotool search --onlyvisible \
+                            --pid "$vncviewer_pid" \
+                            --name '^127\.0\.0\.1:.* - RealVNC Viewer$' \
+                            2>/dev/null || true
+                    } | /usr/bin/tail -n 1
+                )"
+                if [[ -n "$candidate_relay_window_id" ]]; then
+                    relay_window_id="$candidate_relay_window_id"
+                fi
+            fi
             active_window_id="$(
                 /usr/bin/xdotool getactivewindow 2>/dev/null || true
             )"

@@ -219,6 +219,8 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn('"$vncviewer_pid"', launcher)
         self.assertIn("vnc_relay_ready", verifier)
         self.assertIn("localhost VNC relay owns", verifier)
+        self.assertIn("candidate_relay_window_id", launcher)
+        self.assertIn("RealVNC may replace its initial top-level window", launcher)
         self.assertIn("device_init: success", verifier)
         self.assertIn("auto login success", verifier)
         self.assertIn("handle response for: create room, error_code:0", verifier)

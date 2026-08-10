@@ -87,6 +87,9 @@ locked by the release manifest.
 
 ### Fixed
 
+- rediscover the native VNC relay after RealVNC replaces its startup window
+  while entering full-screen mode, so UU's management window cannot remain in
+  front of the shared desktop
 - prevent the validated host from remaining invisible after an apparently
   successful room request: forced duplicate XRDP Pulse endpoint names stalled
   Wine Core Audio before signaling; the host now uses the prefix-scoped

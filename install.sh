@@ -46,6 +46,9 @@ saved_setting() {
 }
 saved_rdp_port="$(saved_setting UURB_RDP_PORT)"
 saved_resolution="$(saved_setting UURB_RESOLUTION)"
+saved_follow_desktop_resolution="$(
+    saved_setting UURB_FOLLOW_DESKTOP_RESOLUTION
+)"
 saved_display="$(saved_setting UURB_DISPLAY)"
 saved_desktop_target="$(saved_setting UURB_DESKTOP_TARGET)"
 saved_desktop_relay="$(saved_setting UURB_DESKTOP_RELAY)"
@@ -62,6 +65,7 @@ saved_console_vnc_port="$(saved_setting UURB_CONSOLE_VNC_PORT)"
 saved_console_web_port="$(saved_setting UURB_CONSOLE_WEB_PORT)"
 rdp_port="${UURB_RDP_PORT:-${saved_rdp_port:-3390}}"
 resolution="${UURB_RESOLUTION:-${saved_resolution:-1920x1080}}"
+follow_desktop_resolution="${UURB_FOLLOW_DESKTOP_RESOLUTION:-${saved_follow_desktop_resolution:-off}}"
 bridge_display="${UURB_DISPLAY:-${saved_display:-auto}}"
 desktop_target="${UURB_DESKTOP_TARGET:-${saved_desktop_target:-auto}}"
 desktop_relay="${UURB_DESKTOP_RELAY:-${saved_desktop_relay:-rdp}}"
@@ -94,6 +98,9 @@ usage: ./install.sh [options]
                          use an approved release manifest
   --rdp-port PORT        local GNOME RDP relay port (default: 3390)
   --resolution WxH       relay resolution (default: 1920x1080)
+  --follow-desktop-resolution off|on
+                         after a stable X11 desktop resize, align and restart
+                         only the UU bridge (default: off)
   --display auto|:N      private X display (default: first free from :20)
   --desktop-target TARGET
                          shared GNOME desktop: auto, xrdp, physical, or :N
@@ -151,6 +158,10 @@ while (($#)); do
             ;;
         --resolution)
             resolution="${2:?--resolution requires WIDTHxHEIGHT}"
+            shift 2
+            ;;
+        --follow-desktop-resolution)
+            follow_desktop_resolution="${2:?--follow-desktop-resolution requires off or on}"
             shift 2
             ;;
         --display)
@@ -276,6 +287,11 @@ resolution_height="${resolution#*x}"
 if ((resolution_width < 640 || resolution_width > 16384 ||
      resolution_height < 480 || resolution_height > 16384)); then
     printf 'The resolution must be between 640x480 and 16384x16384.\n' >&2
+    exit 2
+fi
+if [[ "$follow_desktop_resolution" != off &&
+      "$follow_desktop_resolution" != on ]]; then
+    printf 'Desktop-resolution following must be off or on.\n' >&2
     exit 2
 fi
 if [[ "$bridge_display" != auto &&
@@ -703,6 +719,8 @@ install -d -m 0700 "$config_dir"
 environment_tmp="$(mktemp "$config_dir/.environment.XXXXXX")"
 printf 'UURB_RDP_PORT=%s\n' "$rdp_port" >"$environment_tmp"
 printf 'UURB_RESOLUTION=%s\n' "$resolution" >>"$environment_tmp"
+printf 'UURB_FOLLOW_DESKTOP_RESOLUTION=%s\n' \
+    "$follow_desktop_resolution" >>"$environment_tmp"
 printf 'UURB_DISPLAY=%s\n' "$bridge_display" >>"$environment_tmp"
 printf 'UURB_DESKTOP_TARGET=%s\n' "$desktop_target" >>"$environment_tmp"
 printf 'UURB_DESKTOP_RELAY=%s\n' "$desktop_relay" >>"$environment_tmp"

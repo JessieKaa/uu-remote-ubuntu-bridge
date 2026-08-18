@@ -8,6 +8,9 @@ locked by the release manifest.
 
 ### Added
 
+- opt-in stable desktop-resolution following for the X11/VNC relay; it aligns
+  at startup, debounces later RDP size changes, ignores tiny transient windows,
+  and restarts only the UU bridge
 - an opt-in `UURB_UU_AUDIO=off` boundary that disables Wine PulseAudio only
   inside UU's dedicated prefix when a controller must never open UU's WebRTC
   capture channel; the compatibility default remains `system`

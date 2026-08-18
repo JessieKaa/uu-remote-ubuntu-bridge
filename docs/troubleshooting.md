@@ -254,6 +254,28 @@ this path works on one Ubuntu host but not another. It records the known-good
 7090 baseline, phone/controller variables, exact acceptance matrix, and bounded
 diagnostics without exposing typed content or UU identity data.
 
+## Shift-number symbols look Japanese or American
+
+The direct X11 path follows the target Ubuntu desktop's XKB layout; it does not
+hardcode JIS inside the bridge. Check the selected desktop explicitly:
+
+```bash
+DISPLAY=:11 XAUTHORITY="$HOME/.Xauthority" setxkbmap -query
+```
+
+With `layout: jp`, `Shift+6` produces `&`, `Shift+7` produces `'`, and the
+other symbol positions follow Japanese JIS. A US layout produces different
+shift-number symbols. RealVNC can feel more controller-dependent because its
+client protocol sends already interpreted key symbols, while UU's physical
+path supplies Windows virtual keys/scancodes that the direct helper places on
+the target XKB key positions.
+
+UU does not expose a reliable controller-layout identity to this bridge.
+Automatically guessing `jp` versus `us` from one symbol would make mixed Mac,
+Windows, and phone controllers unstable. Keep the intended Ubuntu layout
+explicit and change it only as an operator choice; resolution following never
+changes keyboard settings.
+
 ## Input degrades after a long relay session
 
 Run the quick verifier and inspect only descriptor metadata:
@@ -455,6 +477,20 @@ step because changing the XRDP geometry may disconnect its attached viewer.
 See the
 [recovery note](xrdp-and-keyboard-recovery.md#desktop-uses-only-part-of-the-uu-canvas)
 for the FreeRDP 3 compatibility correction and persistence behavior.
+
+If Windows RDP and UU regularly take turns on the same X11/XRDP desktop, the
+VNC relay can follow a stable source size automatically:
+
+```bash
+./install.sh --skip-packages --skip-account-login \
+  --follow-desktop-resolution on
+```
+
+The bridge aligns immediately at startup. While running, it ignores the first
+minute, rejects sizes below `1024x720`, and requires three matching five-second
+checks before atomically saving the new size and restarting only UU. This
+debounce prevents a dragged or minimized RDP window from causing a restart
+loop. It never resizes or restarts XRDP, GNOME, or the shared applications.
 
 ## Server restarts every four minutes
 

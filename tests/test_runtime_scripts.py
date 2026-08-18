@@ -241,9 +241,11 @@ class RuntimeScriptTests(unittest.TestCase):
 
         self.assertIn("--rdp-port", installer)
         self.assertIn("--resolution", installer)
+        self.assertIn("--follow-desktop-resolution", installer)
         self.assertIn("--display", installer)
         self.assertIn("UURB_RDP_PORT=%s", installer)
         self.assertIn("UURB_RESOLUTION=%s", installer)
+        self.assertIn("UURB_FOLLOW_DESKTOP_RESOLUTION=%s", installer)
         self.assertIn("UURB_DISPLAY=%s", installer)
         self.assertIn("UURB_DESKTOP_TARGET=%s", installer)
         self.assertIn("UURB_DESKTOP_RELAY=%s", installer)
@@ -259,6 +261,10 @@ class RuntimeScriptTests(unittest.TestCase):
         self.assertIn('bridge_display="${UURB_DISPLAY:-auto}"', launcher)
         self.assertIn(
             'desktop_target="${UURB_DESKTOP_TARGET:-auto}"',
+            launcher,
+        )
+        self.assertIn(
+            'follow_desktop_resolution="${UURB_FOLLOW_DESKTOP_RESOLUTION:-off}"',
             launcher,
         )
         self.assertIn("--desktop-target", installer)
@@ -311,6 +317,24 @@ class RuntimeScriptTests(unittest.TestCase):
             installer.index('port_listener="$('),
             installer.index('stop uu-remote-bridge.service'),
         )
+
+    def test_resolution_follow_is_opt_in_stable_and_bridge_scoped(self):
+        installer = (REPOSITORY / "install.sh").read_text()
+        launcher = (REPOSITORY / "scripts" / "uu-remote-bridge").read_text()
+
+        self.assertIn("--follow-desktop-resolution off|on", installer)
+        self.assertIn("align_resolution_at_startup", launcher)
+        self.assertIn("persist_relay_resolution", launcher)
+        self.assertIn("resolution_grace_checks=240", launcher)
+        self.assertIn("pending_resolution_checks >= 3", launcher)
+        self.assertIn(
+            '[[ "$current_desktop_resolution" == \\\n'
+            '                            "$pending_resolution" ]]',
+            launcher,
+        )
+        self.assertIn('"${systemctl_user[@]}" --no-block restart', launcher)
+        self.assertIn('"$service_name"', launcher)
+        self.assertNotIn("systemctl restart xrdp", launcher)
 
     def test_windowed_app_is_default_and_console_remains_loopback_only(self):
         console = (REPOSITORY / "scripts" / "uu-remote-console").read_text()

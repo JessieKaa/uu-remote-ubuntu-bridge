@@ -87,13 +87,15 @@ official UU window on the logged-in desktop before starting the private relay.
 Complete account sign-in and close that window. Re-running the same command is
 idempotent; unchanged FreeRDP build outputs are checksum-verified and reused.
 
-Port, resolution, private-display, shared-desktop target, phone-text pacing,
-optional physical-key pacing, physical-key route, and an optional UU-only
+Port, resolution, optional stable desktop-resolution following,
+private-display, shared-desktop target, phone-text pacing, optional
+physical-key pacing, physical-key route, and an optional UU-only
 network-interface choice are persistent and can be set without editing the
 service:
 
 ```bash
 ./install.sh --rdp-port 3391 --resolution 2560x1440 --display auto \
+  --follow-desktop-resolution off \
   --desktop-target auto \
   --desktop-relay rdp \
   --text-key-delay-ms 8 --physical-key-delay-ms 0 \
@@ -133,6 +135,23 @@ that local viewer, while the existing direct-X11 keyboard option remains
 available. The compatibility default stays `rdp`, so upgrades never switch a
 working host automatically. The VNC fallback requires an X11 target and fails
 closed instead of creating a different desktop for Wayland.
+
+Windows RDP clients can resize an existing XRDP desktop after UU has already
+started. On a host that deliberately shares that same X11 desktop through the
+VNC fallback, opt into stable size following:
+
+```bash
+./install.sh --skip-packages --skip-account-login \
+  --follow-desktop-resolution on
+```
+
+At startup the private UU canvas follows the selected desktop immediately.
+Later changes must remain unchanged across three five-second observations,
+after a one-minute startup grace period, before the bridge saves the new size
+and restarts only itself. XRDP, GNOME, applications, and the controller's
+keyboard layout are not changed. Sizes below `1024x720` are ignored so a
+temporarily tiny RDP window cannot shrink the unattended canvas. Fixed mode
+remains the default for already-working hosts.
 
 On a host where UU opens physical audio devices or stalls during Windows Core
 Audio discovery, do not force `PULSE_SINK` or `PULSE_SOURCE` to duplicated
